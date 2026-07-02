@@ -6,6 +6,8 @@ from datetime import datetime
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse
+
 
 app = FastAPI(
     title="Windows Scheduler Local API",
@@ -156,6 +158,57 @@ class PromptDeleteResponse(BaseModel):
         examples=["Prompt soft-deleted and old records purged successfully"]
     )
 
+class PromptStatusData(BaseModel):
+    processState: Optional[int] = Field(
+        None, 
+        description="Processing status state value.", 
+        examples=[1]
+    )
+    prompsResponce: Optional[str] = Field(
+        None, 
+        description="Response text generated for the prompt.", 
+        examples=["Summary report generated successfully."]
+    )
+
+class PromptStatusResponse(BaseModel):
+    status: str = Field(
+        ..., 
+        description="Status of the operation.", 
+        examples=["success"]
+    )
+    data: PromptStatusData = Field(
+        ..., 
+        description="The prompt status details containing processState and prompsResponce."
+    )
+
+class ChatHistoryResponse(BaseModel):
+    status: str = Field(
+        ..., 
+        description="Status of the operation.", 
+        examples=["success"]
+    )
+    data: List[PromptItem] = Field(
+        ..., 
+        description="List of paginated prompts."
+    )
+    total: int = Field(
+        ..., 
+        description="Total count of prompts in database.", 
+        examples=[100]
+    )
+    page: int = Field(
+        ..., 
+        description="Current page number.", 
+        examples=[1]
+    )
+    limit: int = Field(
+        ..., 
+        description="Page size limit.", 
+        examples=[10]
+    )
+
+
+
 class DBConfigModel(BaseModel):
     host: Optional[str] = Field(None, description="Database host server", examples=["127.0.0.1"])
     port: Optional[int] = Field(None, description="Database port number", examples=[3306])
@@ -182,6 +235,19 @@ def clean_db_row(row):
     elif "IsDeleted" in row and isinstance(row["IsDeleted"], int):
         row["IsDeleted"] = bool(row["IsDeleted"])
     return row
+
+
+@app.get("/home", response_class=HTMLResponse, include_in_schema=False)
+def get_home():
+    """
+    Serve the Chat UI home page.
+    """
+    try:
+        html_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "home.html")
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="home.html not found")
 
 
 @app.get(
@@ -211,6 +277,96 @@ def get_prompt(processState: int = 0):
                 return {
                     "status": "success",
                     "data": cleaned_result
+                }
+        finally:
+            connection.close()
+    except pymysql.MySQLError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+
+
+@app.get(
+    "/get-prompt-status",
+    response_model=PromptStatusResponse,
+    summary="Get status of a specific prompt",
+    description="Fetches the processState and prompsResponce for a prompt record from the `collab.promps` table by its PromptId.",
+    tags=["Scheduler"]
+)
+def get_prompt_status(PromptId: int):
+    """
+    Get the processing status and response of a prompt using its PromptId.
+    - **PromptId**: The unique ID of the prompt.
+    """
+    try:
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                sql = "SELECT processState, prompsResponce FROM collab.promps WHERE promptId = %s;"
+                cursor.execute(sql, (PromptId,))
+                row = cursor.fetchone()
+                if not row:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Prompt ID {PromptId} not found."
+                    )
+                return {
+                    "status": "success",
+                    "data": {
+                        "processState": row.get("processState"),
+                        "prompsResponce": row.get("prompsResponce")
+                    }
+                }
+        finally:
+            connection.close()
+    except pymysql.MySQLError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+
+
+@app.get(
+    "/chat-history",
+    response_model=ChatHistoryResponse,
+    summary="Retrieve paginated chat prompt history",
+    description="Fetches a list of prompts from the `collab.promps` table ordered by promptId DESC with pagination parameters.",
+    tags=["Scheduler"]
+)
+def get_chat_history(page: int = 1, limit: int = 10):
+    """
+    Get paginated chat prompt history.
+    - **page**: The page number (starts at 1).
+    - **limit**: Number of records per page.
+    """
+    if page < 1:
+        raise HTTPException(status_code=400, detail="Page must be greater than or equal to 1.")
+    if limit < 1:
+        raise HTTPException(status_code=400, detail="Limit must be greater than or equal to 1.")
+
+    offset = (page - 1) * limit
+    try:
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                # Get total count
+                cursor.execute("SELECT COUNT(*) AS total FROM collab.promps;")
+                total_row = cursor.fetchone()
+                total = total_row["total"] if total_row else 0
+
+                # Get records
+                sql = "SELECT * FROM collab.promps ORDER BY promptId DESC LIMIT %s OFFSET %s;"
+                cursor.execute(sql, (limit, offset))
+                result = cursor.fetchall()
+                cleaned_result = [clean_db_row(row) for row in result]
+
+                return {
+                    "status": "success",
+                    "data": cleaned_result,
+                    "total": total,
+                    "page": page,
+                    "limit": limit
                 }
         finally:
             connection.close()
