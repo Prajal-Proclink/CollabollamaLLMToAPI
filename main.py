@@ -7,13 +7,17 @@ from typing import List, Optional, Any
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
-
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(
     title="Windows Scheduler Local API",
     description="API for accessing and managing local scheduler prompts.",
     version="1.0.0"
 )
+
+# Mount the static files directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 
 CONFIG_FILE = "config.json"
 
