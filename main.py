@@ -60,7 +60,7 @@ def get_db_connection() -> pymysql.Connection:
 
 # Swagger UI Schema Models
 class PromptItem(BaseModel):
-    promptId: int = Field(
+    idPrompt: int = Field(
         ..., 
         description="The unique identifier for the prompt.", 
         examples=[101]
@@ -120,14 +120,14 @@ class PromptCreateResponse(BaseModel):
         description="Detailed success message.", 
         examples=["Prompt added successfully"]
     )
-    promptId: int = Field(
+    idPrompt: int = Field(
         ..., 
         description="The generated ID of the inserted prompt.", 
         examples=[102]
     )
 
 class PromptUpdateRequest(BaseModel):
-    promptId: int = Field(
+    idPrompt: int = Field(
         ..., 
         description="The unique ID of the prompt to update with a response.", 
         examples=[102]
@@ -308,7 +308,7 @@ def clean_db_row(row):
     
     # Map collab.prompts database names to Pydantic/frontend names
     if "idPrompt" in row and "idConversation" not in row:
-        row["promptId"] = row.pop("idPrompt")
+        row["idPrompt"] = row.pop("idPrompt")
     if "promptDate" in row:
         row["promptdate"] = row.pop("promptDate")
     if "promptResponce" in row:
@@ -380,25 +380,25 @@ def get_prompt(processState: int = 0):
     "/get-prompt-status",
     response_model=PromptStatusResponse,
     summary="Get status of a specific prompt",
-    description="Fetches the processState and prompsResponce for a prompt record from the `collab.prompts` table by its PromptId.",
+    description="Fetches the processState and prompsResponce for a prompt record from the `collab.prompts` table by its idPrompt.",
     tags=["Scheduler"]
 )
-def get_prompt_status(PromptId: int):
+def get_prompt_status(idPrompt: int):
     """
-    Get the processing status and response of a prompt using its PromptId.
-    - **PromptId**: The unique ID of the prompt.
+    Get the processing status and response of a prompt using its idPrompt.
+    - **idPrompt**: The unique ID of the prompt.
     """
     try:
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
                 sql = "SELECT processState, promptResponce FROM collab.prompts WHERE idPrompt = %s;"
-                cursor.execute(sql, (PromptId,))
+                cursor.execute(sql, (idPrompt,))
                 row = cursor.fetchone()
                 if not row:
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Prompt ID {PromptId} not found."
+                        detail=f"Prompt ID {idPrompt} not found."
                     )
                 return {
                     "status": "success",
@@ -420,7 +420,7 @@ def get_prompt_status(PromptId: int):
     "/chat-history",
     response_model=ChatHistoryResponse,
     summary="Retrieve paginated chat prompt history",
-    description="Fetches a list of prompts from the `collab.prompts` table ordered by promptId DESC with pagination parameters.",
+    description="Fetches a list of prompts from the `collab.prompts` table ordered by idPrompt DESC with pagination parameters.",
     tags=["Scheduler"]
 )
 def get_chat_history(page: int = 1, limit: int = 10):
@@ -481,7 +481,7 @@ def add_prompt(payload: PromptCreateRequest):
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
-                # 1. Fetch next available promptId (since it's not set to auto_increment)
+                # 1. Fetch next available idPrompt (since it's not set to auto_increment)
                 cursor.execute("SELECT COALESCE(MAX(idPrompt), 0) + 1 AS nextId FROM collab.prompts;")
                 row = cursor.fetchone()
                 next_id = row["nextId"] if row else 1
@@ -497,7 +497,7 @@ def add_prompt(payload: PromptCreateRequest):
                 return {
                     "status": "success",
                     "message": "Prompt added successfully",
-                    "promptId": next_id
+                    "idPrompt": next_id
                 }
         finally:
             connection.close()
@@ -517,18 +517,18 @@ def add_prompt(payload: PromptCreateRequest):
 )
 def add_promps_responce(payload: PromptUpdateRequest):
     """
-    Update the prompsResponce for a prompt by promptId, setting processState=2 and promptdate to current datetime.
+    Update the prompsResponce for a prompt by idPrompt, setting processState=2 and promptdate to current datetime.
     """
     try:
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
-                # 1. Verify if the promptId exists
-                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (payload.promptId,))
+                # 1. Verify if the idPrompt exists
+                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (payload.idPrompt,))
                 if not cursor.fetchone():
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Prompt ID {payload.promptId} not found."
+                        detail=f"Prompt ID {payload.idPrompt} not found."
                     )
 
                 # 2. Update the record
@@ -537,7 +537,7 @@ def add_promps_responce(payload: PromptUpdateRequest):
                     SET promptResponce = %s, processState = 2, promptDate = %s 
                     WHERE idPrompt = %s;
                 """
-                cursor.execute(sql, (payload.prompsResponce, datetime.now(), payload.promptId))
+                cursor.execute(sql, (payload.prompsResponce, datetime.now(), payload.idPrompt))
                 connection.commit()
                 
                 return {
@@ -557,30 +557,30 @@ def add_promps_responce(payload: PromptUpdateRequest):
     "/delete-prompt",
     response_model=PromptDeleteResponse,
     summary="Soft-delete a prompt and purge old records",
-    description="Updates the IsDeleted column (soft delete) of a prompt by its promptId, and automatically hard-deletes any soft-deleted prompts older than 1 month.",
+    description="Updates the IsDeleted column (soft delete) of a prompt by its idPrompt, and automatically hard-deletes any soft-deleted prompts older than 1 month.",
     tags=["Scheduler"]
 )
-def delete_prompt(Promptid: int, Isdelete: int = 1):
+def delete_prompt(idPrompt: int, Isdelete: int = 1):
     """
-    Soft-delete a prompt using its Promptid, and hard-delete soft-deleted prompts older than 1 month.
-    - **Promptid**: The unique ID of the prompt.
+    Soft-delete a prompt using its idPrompt, and hard-delete soft-deleted prompts older than 1 month.
+    - **idPrompt**: The unique ID of the prompt.
     - **Isdelete**: The value to set for the IsDeleted column (1 for soft-delete, 0 to restore).
     """
     try:
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
-                # 1. Verify if the promptId exists
-                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (Promptid,))
+                # 1. Verify if the idPrompt exists
+                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (idPrompt,))
                 if not cursor.fetchone():
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Prompt ID {Promptid} not found."
+                        detail=f"Prompt ID {idPrompt} not found."
                     )
 
                 # 2. Soft-delete the prompt
                 update_sql = "UPDATE collab.prompts SET isDeleted = %s WHERE idPrompt = %s;"
-                cursor.execute(update_sql, (Isdelete, Promptid))
+                cursor.execute(update_sql, (Isdelete, idPrompt))
 
                 # 3. Purge soft-deleted prompts older than 1 month (where isDeleted = 1)
                 purge_sql = """

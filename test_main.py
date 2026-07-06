@@ -40,7 +40,7 @@ def test_get_prompt_status_success():
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
     
     with patch("main.get_db_connection", return_value=mock_conn):
-        res = main.get_prompt_status(PromptId=101)
+        res = main.get_prompt_status(idPrompt=101)
         assert res["status"] == "success"
         assert res["data"]["processState"] == 2
         assert res["data"]["prompsResponce"] == "Response generated"
@@ -55,7 +55,7 @@ def test_get_prompt_status_not_found():
     
     with patch("main.get_db_connection", return_value=mock_conn):
         with pytest.raises(HTTPException) as exc_info:
-            main.get_prompt_status(PromptId=999)
+            main.get_prompt_status(idPrompt=999)
         assert exc_info.value.status_code == 404
         assert "Prompt ID 999 not found" in exc_info.value.detail
 
@@ -73,8 +73,8 @@ def test_get_chat_history():
     # First fetchone is COUNT(*), fetchall is records
     mock_cursor.fetchone.return_value = {"total": 25}
     mock_cursor.fetchall.return_value = [
-        {"promptId": 10, "prompts": "p10", "processState": 2, "promptdate": "2026-07-02T10:00:00", "prompsResponce": "r10", "IsDeleted": 0},
-        {"promptId": 9, "prompts": "p9", "processState": 2, "promptdate": "2026-07-02T09:50:00", "prompsResponce": "r9", "IsDeleted": 0}
+        {"idPrompt": 10, "prompts": "p10", "processState": 2, "promptdate": "2026-07-02T10:00:00", "prompsResponce": "r10", "IsDeleted": 0},
+        {"idPrompt": 9, "prompts": "p9", "processState": 2, "promptdate": "2026-07-02T09:50:00", "prompsResponce": "r9", "IsDeleted": 0}
     ]
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
     
@@ -85,7 +85,7 @@ def test_get_chat_history():
         assert res["page"] == 2
         assert res["limit"] == 10
         assert len(res["data"]) == 2
-        assert res["data"][0]["promptId"] == 10
+        assert res["data"][0]["idPrompt"] == 10
 
 
 
