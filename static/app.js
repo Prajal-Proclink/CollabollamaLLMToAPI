@@ -142,7 +142,7 @@
         function addHistoryItemToSidebar(item, prepend = true) {
             const card = document.createElement('div');
             card.className = 'history-item';
-            card.dataset.promptId = item.promptId;
+            card.dataset.idPrompt = item.idPrompt;
             
             let dateStr = '';
             if (item.promptdate) {
@@ -157,8 +157,7 @@
             card.innerHTML = `
                 <div class="history-item-prompt">${escapeHTML(item.prompts)}</div>
                 <div class="history-item-meta">
-                    <span>ID: ${item.promptId}</span>
-                    <span>${dateStr}</span>
+                    
                 </div>
             `;
             
@@ -200,7 +199,7 @@
                 
                 // Retrieve response status from DB
                 try {
-                    const res = await fetch(`/get-prompt-status?PromptId=${item.promptId}`, { signal });
+                    const res = await fetch(`/get-prompt-status?idPrompt=${item.idPrompt}`, { signal });
                     if (!res.ok) {
                         botBubble.innerHTML = `<span class="error-message">Error fetching response status.</span>`;
                         return;
@@ -219,7 +218,7 @@
                             botBubble.appendChild(meta);
                         } else {
                             // Resume polling
-                            pollPromptStatus(item.promptId, botBubble, signal);
+                            pollConversationStatus(item.idPrompt, botBubble, signal);
                         }
                     }
                 } catch (err) {
@@ -248,7 +247,7 @@
                 if (res.status === 'success' && res.data) {
                     totalHistoryRecords = res.total;
                     res.data.forEach(item => {
-                        if (!document.querySelector(`.history-item[data-prompt-id="${item.promptId}"]`)) {
+                        if (!document.querySelector(`.history-item[data-prompt-id="${item.idPrompt}"]`)) {
                             addHistoryItemToSidebar(item, false);
                         }
                     });
@@ -328,14 +327,26 @@
                 if (!response.ok) {
                     throw new Error('Failed to register prompt');
                 }
-
                 const result = await response.json();
-                const promptId = result.promptId;
+                const idPrompt = result.idPrompt;
+                const response2 = await fetch('/add-conversation-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ conversation: promptText ,idPrompt: idPrompt }),
+                    signal: signal
+                });
+
+                if (!response2.ok) {
+                    throw new Error('Failed to register prompt');
+                }
+                
 
                 // Prepend new prompt item to sidebar history list if NOT in temporary mode
                 if (!isTemporaryChat) {
                     const newItem = {
-                        promptId: promptId,
+                        idPrompt: idPrompt,
                         prompts: promptText,
                         processState: 1,
                         promptdate: new Date().toISOString(),
@@ -345,7 +356,7 @@
                 }
 
                 // 2. Poll prompt status until response is ready
-                pollPromptStatus(promptId, botBubble, signal);
+                pollPromptStatus(idPrompt, botBubble, signal);
 
             } catch (err) {
                 if (err.name === 'AbortError') return;
@@ -358,7 +369,7 @@
             }
         });
 
-        async function pollPromptStatus(promptId, botBubble, signal) {
+        async function pollPromptStatus(idPrompt, botBubble, signal) {
             const maxAttempts = 90; // 2+ minutes max
             let attempts = 0;
 
@@ -375,7 +386,61 @@
                 }
 
                 try {
-                    const response = await fetch(`/get-prompt-status?PromptId=${promptId}`, { signal });
+                    const response = await fetch(`/get-prompt-status?idPrompt=${idPrompt}`, { signal });
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            clearInterval(currentInterval);
+                            throw new Error('Prompt status record not found.');
+                        }
+                        return;
+                    }
+
+                    const data = await response.json();
+                    if (data.status === 'success' && data.data) {
+                        const state = data.data.processState;
+                        const reply = data.data.prompsResponce;
+
+                        // processState 2 indicates completed
+                        if (state === 2 || (reply && reply.trim() !== '')) {
+                            clearInterval(currentInterval);
+                            botBubble.innerHTML = '';
+                            botBubble.innerText = reply;
+                            
+                            const meta = document.createElement('span');
+                            meta.className = 'msg-meta';
+                            meta.innerText = formatTime();
+                            botBubble.appendChild(meta);
+                        }
+                    }
+                } catch (err) {
+                    if (err.name === 'AbortError') return;
+                    clearInterval(currentInterval);
+                    botBubble.innerHTML = `<span class="error-message">Error: ${err.message}</span>`;
+                    const meta = document.createElement('span');
+                    meta.className = 'msg-meta';
+                    meta.innerText = formatTime();
+                    botBubble.appendChild(meta);
+                }
+            }, 1500);
+        }
+        async function pollConversationStatus(idPrompt, botBubble, signal) {
+            const maxAttempts = 90; // 2+ minutes max
+            let attempts = 0;
+
+            currentInterval = setInterval(async () => {
+                attempts++;
+                if (attempts > maxAttempts) {
+                    clearInterval(currentInterval);
+                    botBubble.innerHTML = `<span class="error-message">Error: Request timed out.</span>`;
+                    const meta = document.createElement('span');
+                    meta.className = 'msg-meta';
+                    meta.innerText = formatTime();
+                    botBubble.appendChild(meta);
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/get-conversation-messages?idPrompt=${idPrompt}&conversationState=2`, { signal });
                     if (!response.ok) {
                         if (response.status === 404) {
                             clearInterval(currentInterval);
