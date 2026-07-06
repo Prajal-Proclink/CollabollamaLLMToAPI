@@ -209,6 +209,74 @@ class ChatHistoryResponse(BaseModel):
 
 
 
+# Conversation Schema Models
+class ConversationItem(BaseModel):
+    idConversation: int = Field(
+        ..., 
+        description="The unique identifier for the conversation message.", 
+        examples=[1]
+    )
+    idPrompt: int = Field(
+        ..., 
+        description="The parent prompt/session identifier.", 
+        examples=[101]
+    )
+    conversation: Optional[str] = Field(
+        None, 
+        description="The user's continuation prompt text.", 
+        examples=["Tell me more about it."]
+    )
+    conversationResponce: Optional[str] = Field(
+        None, 
+        description="Response text generated for the conversation message.", 
+        examples=["Sure, here is more detail..."]
+    )
+    conversationState: int = Field(
+        1, 
+        description="Processing status state value (1=pending, 2=completed).", 
+        examples=[1]
+    )
+    conversationDate: Optional[Any] = Field(
+        None, 
+        description="The timestamp of the conversation message.", 
+        examples=["2026-07-06T12:00:00"]
+    )
+    isdeleted: Optional[bool] = Field(
+        None, 
+        description="Soft-delete status flag.", 
+        examples=[False]
+    )
+
+class ConversationHistoryResponse(BaseModel):
+    status: str = Field(..., description="Status of the operation.", examples=["success"])
+    data: List[ConversationItem] = Field(..., description="List of conversation messages for the session.")
+
+class ConversationCreateRequest(BaseModel):
+    idPrompt: int = Field(..., description="The parent prompt session ID to attach the message to.", examples=[101])
+    conversation: str = Field(..., description="The conversation message text.", examples=["And why is that?"])
+
+class ConversationCreateResponse(BaseModel):
+    status: str = Field(..., description="Status of the operation.", examples=["success"])
+    message: str = Field(..., description="Success message.", examples=["Message added to conversation successfully"])
+    idConversation: int = Field(..., description="The generated ID of the inserted conversation record.", examples=[1])
+
+class ConversationUpdateRequest(BaseModel):
+    idConversation: int = Field(..., description="The unique ID of the conversation record to update.", examples=[1])
+    conversationResponce: str = Field(..., description="The response text to save.", examples=["Here is the additional detail."])
+
+class ConversationUpdateResponse(BaseModel):
+    status: str = Field(..., description="Status of the operation.", examples=["success"])
+    message: str = Field(..., description="Success message.", examples=["Conversation response updated successfully"])
+
+class ConversationStatusData(BaseModel):
+    conversationState: int = Field(..., description="Processing status state value.", examples=[1])
+    conversationResponce: Optional[str] = Field(None, description="Response text generated for the message.")
+
+class ConversationStatusResponse(BaseModel):
+    status: str = Field(..., description="Status of the operation.", examples=["success"])
+    data: ConversationStatusData = Field(..., description="The conversation message status details.")
+
+
 class DBConfigModel(BaseModel):
     host: Optional[str] = Field(None, description="Database host server", examples=["127.0.0.1"])
     port: Optional[int] = Field(None, description="Database port number", examples=[3306])
@@ -228,12 +296,29 @@ class ConfigUpdateResponse(BaseModel):
 
 def clean_db_row(row):
     """
-    Cleans a database row dictionary by converting types (like bit(1) -> bool).
+    Cleans a database row dictionary by converting types (like bit(1) -> bool)
+    and mapping database column names to the Pydantic model field names.
     """
-    if "IsDeleted" in row and isinstance(row["IsDeleted"], bytes):
-        row["IsDeleted"] = bool(int.from_bytes(row["IsDeleted"], byteorder='big'))
-    elif "IsDeleted" in row and isinstance(row["IsDeleted"], int):
-        row["IsDeleted"] = bool(row["IsDeleted"])
+    if not row:
+        return row
+    
+    # Map collab.prompts database names to Pydantic/frontend names
+    if "idPrompt" in row and "idConversation" not in row:
+        row["promptId"] = row.pop("idPrompt")
+    if "promptDate" in row:
+        row["promptdate"] = row.pop("promptDate")
+    if "promptResponce" in row:
+        row["prompsResponce"] = row.pop("promptResponce")
+    if "isDeleted" in row:
+        row["IsDeleted"] = row.pop("isDeleted")
+
+    # Clean bit(1) fields
+    for bit_col in ["IsDeleted", "isdeleted"]:
+        if bit_col in row:
+            if isinstance(row[bit_col], bytes):
+                row[bit_col] = bool(int.from_bytes(row[bit_col], byteorder='big'))
+            elif isinstance(row[bit_col], int):
+                row[bit_col] = bool(row[bit_col])
     return row
 
 
@@ -254,12 +339,12 @@ def get_home():
     "/get-prompt",
     response_model=PromptResponse,
     summary="Retrieve local scheduler prompts",
-    description="Connects to the local MySQL database and fetches prompt records from the `collab.promps` table, optionally filtered by processState. Passing processState=0 returns all records.",
+    description="Connects to the local MySQL database and fetches prompt records from the `collab.prompts` table, optionally filtered by processState. Passing processState=0 returns all records.",
     tags=["Scheduler"]
 )
 def get_prompt(processState: int = 0):
     """
-    Get prompts from the collab.promps table.
+    Get prompts from the collab.prompts table.
     - **processState**: Pass 0 to fetch all records, or filter by a specific status (e.g., 1 or 2).
     """
     try:
@@ -267,10 +352,10 @@ def get_prompt(processState: int = 0):
         try:
             with connection.cursor() as cursor:
                 if processState == 0:
-                    sql = "SELECT * FROM collab.promps;"
+                    sql = "SELECT * FROM collab.prompts;"
                     cursor.execute(sql)
                 else:
-                    sql = "SELECT * FROM collab.promps WHERE processState = %s;"
+                    sql = "SELECT * FROM collab.prompts WHERE processState = %s;"
                     cursor.execute(sql, (processState,))
                 result = cursor.fetchall()
                 cleaned_result = [clean_db_row(row) for row in result]
@@ -291,7 +376,7 @@ def get_prompt(processState: int = 0):
     "/get-prompt-status",
     response_model=PromptStatusResponse,
     summary="Get status of a specific prompt",
-    description="Fetches the processState and prompsResponce for a prompt record from the `collab.promps` table by its PromptId.",
+    description="Fetches the processState and prompsResponce for a prompt record from the `collab.prompts` table by its PromptId.",
     tags=["Scheduler"]
 )
 def get_prompt_status(PromptId: int):
@@ -303,7 +388,7 @@ def get_prompt_status(PromptId: int):
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
-                sql = "SELECT processState, prompsResponce FROM collab.promps WHERE promptId = %s;"
+                sql = "SELECT processState, promptResponce FROM collab.prompts WHERE idPrompt = %s;"
                 cursor.execute(sql, (PromptId,))
                 row = cursor.fetchone()
                 if not row:
@@ -315,7 +400,7 @@ def get_prompt_status(PromptId: int):
                     "status": "success",
                     "data": {
                         "processState": row.get("processState"),
-                        "prompsResponce": row.get("prompsResponce")
+                        "prompsResponce": row.get("promptResponce")
                     }
                 }
         finally:
@@ -331,7 +416,7 @@ def get_prompt_status(PromptId: int):
     "/chat-history",
     response_model=ChatHistoryResponse,
     summary="Retrieve paginated chat prompt history",
-    description="Fetches a list of prompts from the `collab.promps` table ordered by promptId DESC with pagination parameters.",
+    description="Fetches a list of prompts from the `collab.prompts` table ordered by promptId DESC with pagination parameters.",
     tags=["Scheduler"]
 )
 def get_chat_history(page: int = 1, limit: int = 10):
@@ -351,12 +436,12 @@ def get_chat_history(page: int = 1, limit: int = 10):
         try:
             with connection.cursor() as cursor:
                 # Get total count
-                cursor.execute("SELECT COUNT(*) AS total FROM collab.promps;")
+                cursor.execute("SELECT COUNT(*) AS total FROM collab.prompts;")
                 total_row = cursor.fetchone()
                 total = total_row["total"] if total_row else 0
 
                 # Get records
-                sql = "SELECT * FROM collab.promps ORDER BY promptId DESC LIMIT %s OFFSET %s;"
+                sql = "SELECT * FROM collab.prompts ORDER BY idPrompt DESC LIMIT %s OFFSET %s;"
                 cursor.execute(sql, (limit, offset))
                 result = cursor.fetchall()
                 cleaned_result = [clean_db_row(row) for row in result]
@@ -381,25 +466,25 @@ def get_chat_history(page: int = 1, limit: int = 10):
     "/add-prompt",
     response_model=PromptCreateResponse,
     summary="Insert a new prompt",
-    description="Generates a new prompt ID and inserts a prompt record into `collab.promps` with default processState=1 and current timestamp.",
+    description="Generates a new prompt ID and inserts a prompt record into `collab.prompts` with default processState=1 and current timestamp.",
     tags=["Scheduler"]
 )
 def add_prompt(payload: PromptCreateRequest):
     """
-    Insert a prompt string into collab.promps with processState=1 and current datetime.
+    Insert a prompt string into collab.prompts with processState=1 and current datetime.
     """
     try:
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
                 # 1. Fetch next available promptId (since it's not set to auto_increment)
-                cursor.execute("SELECT COALESCE(MAX(promptId), 0) + 1 AS nextId FROM collab.promps;")
+                cursor.execute("SELECT COALESCE(MAX(idPrompt), 0) + 1 AS nextId FROM collab.prompts;")
                 row = cursor.fetchone()
                 next_id = row["nextId"] if row else 1
 
                 # 2. Insert the record
                 sql = """
-                    INSERT INTO collab.promps (promptId, prompts, processState, promptdate, prompsResponce, IsDeleted)
+                    INSERT INTO collab.prompts (idPrompt, prompts, processState, promptDate, promptResponce, isDeleted)
                     VALUES (%s, %s, %s, %s, %s, 0);
                 """
                 cursor.execute(sql, (next_id, payload.prompts, 1, datetime.now(), None))
@@ -435,7 +520,7 @@ def add_promps_responce(payload: PromptUpdateRequest):
         try:
             with connection.cursor() as cursor:
                 # 1. Verify if the promptId exists
-                cursor.execute("SELECT 1 FROM collab.promps WHERE promptId = %s;", (payload.promptId,))
+                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (payload.promptId,))
                 if not cursor.fetchone():
                     raise HTTPException(
                         status_code=404,
@@ -444,9 +529,9 @@ def add_promps_responce(payload: PromptUpdateRequest):
 
                 # 2. Update the record
                 sql = """
-                    UPDATE collab.promps 
-                    SET prompsResponce = %s, processState = 2, promptdate = %s 
-                    WHERE promptId = %s;
+                    UPDATE collab.prompts 
+                    SET promptResponce = %s, processState = 2, promptDate = %s 
+                    WHERE idPrompt = %s;
                 """
                 cursor.execute(sql, (payload.prompsResponce, datetime.now(), payload.promptId))
                 connection.commit()
@@ -482,7 +567,7 @@ def delete_prompt(Promptid: int, Isdelete: int = 1):
         try:
             with connection.cursor() as cursor:
                 # 1. Verify if the promptId exists
-                cursor.execute("SELECT 1 FROM collab.promps WHERE promptId = %s;", (Promptid,))
+                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (Promptid,))
                 if not cursor.fetchone():
                     raise HTTPException(
                         status_code=404,
@@ -490,14 +575,14 @@ def delete_prompt(Promptid: int, Isdelete: int = 1):
                     )
 
                 # 2. Soft-delete the prompt
-                update_sql = "UPDATE collab.promps SET IsDeleted = %s WHERE promptId = %s;"
+                update_sql = "UPDATE collab.prompts SET isDeleted = %s WHERE idPrompt = %s;"
                 cursor.execute(update_sql, (Isdelete, Promptid))
 
-                # 3. Purge soft-deleted prompts older than 1 month (where IsDeleted = 1)
+                # 3. Purge soft-deleted prompts older than 1 month (where isDeleted = 1)
                 purge_sql = """
-                    DELETE FROM collab.promps 
-                    WHERE (CASE WHEN promptdate LIKE '%T%' THEN STR_TO_DATE(promptdate, '%Y-%m-%dT%H:%i:%s') ELSE STR_TO_DATE(promptdate, '%Y-%m-%d %H:%i:%s') END) < NOW() - INTERVAL 1 MONTH 
-                      AND IsDeleted = 1;
+                    DELETE FROM collab.prompts 
+                    WHERE (CASE WHEN promptDate LIKE '%T%' THEN STR_TO_DATE(promptDate, '%Y-%m-%dT%H:%i:%s') ELSE STR_TO_DATE(promptDate, '%Y-%m-%d %H:%i:%s') END) < NOW() - INTERVAL 1 MONTH 
+                      AND isDeleted = 1;
                 """
                 cursor.execute(purge_sql)
                 
@@ -592,4 +677,177 @@ def update_config(payload: ConfigUpdateRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to update configuration: {str(e)}"
+        )
+
+
+@app.get(
+    "/get-conversation-messages",
+    response_model=ConversationHistoryResponse,
+    summary="Get conversation messages for a prompt session",
+    description="Connects to the database and fetches message records from `collab.conversation` for a specific prompt session (idPrompt), optionally filtered by conversationState.",
+    tags=["Conversation"]
+)
+def get_conversation_messages(idPrompt: int, conversationState: int = 0):
+    """
+    Get conversation messages for a specific prompt session.
+    - **idPrompt**: The unique ID of the parent prompt session.
+    - **conversationState**: Pass 0 to fetch all records, or filter by specific status (e.g., 1 or 2).
+    """
+    try:
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                if conversationState == 0:
+                    sql = "SELECT * FROM collab.conversation WHERE idPrompt = %s ORDER BY idConversation ASC;"
+                    cursor.execute(sql, (idPrompt,))
+                else:
+                    sql = "SELECT * FROM collab.conversation WHERE idPrompt = %s AND conversationState = %s ORDER BY idConversation ASC;"
+                    cursor.execute(sql, (idPrompt, conversationState))
+                result = cursor.fetchall()
+                cleaned_result = [clean_db_row(row) for row in result]
+                return {
+                    "status": "success",
+                    "data": cleaned_result
+                }
+        finally:
+            connection.close()
+    except pymysql.MySQLError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+
+
+@app.get(
+    "/get-conversation-message-status",
+    response_model=ConversationStatusResponse,
+    summary="Get status of a specific conversation message",
+    description="Fetches the conversationState and conversationResponce for a conversation record from `collab.conversation` by its idConversation.",
+    tags=["Conversation"]
+)
+def get_conversation_message_status(idConversation: int):
+    """
+    Get processing status and response of a conversation message.
+    - **idConversation**: The unique ID of the conversation message.
+    """
+    try:
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                sql = "SELECT conversationState, conversationResponce FROM collab.conversation WHERE idConversation = %s;"
+                cursor.execute(sql, (idConversation,))
+                row = cursor.fetchone()
+                if not row:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Conversation ID {idConversation} not found."
+                    )
+                return {
+                    "status": "success",
+                    "data": {
+                        "conversationState": row.get("conversationState"),
+                        "conversationResponce": row.get("conversationResponce")
+                    }
+                }
+        finally:
+            connection.close()
+    except pymysql.MySQLError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+
+
+@app.post(
+    "/add-conversation-message",
+    response_model=ConversationCreateResponse,
+    summary="Add a new message to a conversation",
+    description="Generates a new conversation message ID and inserts a record into `collab.conversation` with conversationState=1 and current timestamp.",
+    tags=["Conversation"]
+)
+def add_conversation_message(payload: ConversationCreateRequest):
+    """
+    Insert a new conversation message into collab.conversation with conversationState=1.
+    """
+    try:
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                # 1. Verify parent prompt session exists
+                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (payload.idPrompt,))
+                if not cursor.fetchone():
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Parent prompt session ID {payload.idPrompt} not found."
+                    )
+
+                # 2. Fetch next available idConversation (since it's not set to auto_increment)
+                cursor.execute("SELECT COALESCE(MAX(idConversation), 0) + 1 AS nextId FROM collab.conversation;")
+                row = cursor.fetchone()
+                next_id = row["nextId"] if row else 1
+
+                # 3. Insert the conversation message record
+                sql = """
+                    INSERT INTO collab.conversation (idConversation, idPrompt, conversation, conversationResponce, conversationState, conversationDate, isdeleted)
+                    VALUES (%s, %s, %s, %s, 1, %s, 0);
+                """
+                cursor.execute(sql, (next_id, payload.idPrompt, payload.conversation, None, datetime.now()))
+                connection.commit()
+
+                return {
+                    "status": "success",
+                    "message": "Message added to conversation successfully",
+                    "idConversation": next_id
+                }
+        finally:
+            connection.close()
+    except pymysql.MySQLError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+
+
+@app.post(
+    "/update-conversation-response",
+    response_model=ConversationUpdateResponse,
+    summary="Update conversation response",
+    description="Updates the response content for a conversation record, setting conversationState to 2 and updating the timestamp.",
+    tags=["Conversation"]
+)
+def update_conversation_response(payload: ConversationUpdateRequest):
+    """
+    Update response text for a conversation message, setting conversationState to 2.
+    """
+    try:
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                # 1. Verify if the idConversation exists
+                cursor.execute("SELECT 1 FROM collab.conversation WHERE idConversation = %s;", (payload.idConversation,))
+                if not cursor.fetchone():
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Conversation ID {payload.idConversation} not found."
+                    )
+
+                # 2. Update the record
+                sql = """
+                    UPDATE collab.conversation 
+                    SET conversationResponce = %s, conversationState = 2, conversationDate = %s 
+                    WHERE idConversation = %s;
+                """
+                cursor.execute(sql, (payload.conversationResponce, datetime.now(), payload.idConversation))
+                connection.commit()
+
+                return {
+                    "status": "success",
+                    "message": "Conversation response updated successfully"
+                }
+        finally:
+            connection.close()
+    except pymysql.MySQLError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
         )

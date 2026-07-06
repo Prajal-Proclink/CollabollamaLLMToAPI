@@ -842,37 +842,37 @@
                 }
                 
                 // Retrieve response status from DB
-                try {
-                    const res = await fetch(`/get-prompt-status?PromptId=${item.promptId}`, { signal });
-                    if (!res.ok) {
-                        botBubble.innerHTML = `<span class="error-message">Error fetching response status.</span>`;
-                        return;
-                    }
-                    const resData = await res.json();
-                    if (resData.status === 'success' && resData.data) {
-                        const state = resData.data.processState;
-                        const reply = resData.data.prompsResponce;
+                // try {
+                //     const res = await fetch(`/get-prompt-status?PromptId=${item.promptId}`, { signal });
+                //     if (!res.ok) {
+                //         botBubble.innerHTML = `<span class="error-message">Error fetching response status.</span>`;
+                //         return;
+                //     }
+                //     const resData = await res.json();
+                //     if (resData.status === 'success' && resData.data) {
+                //         const state = resData.data.processState;
+                //         const reply = resData.data.prompsResponce;
                         
-                        if (state === 2 || (reply && reply.trim() !== '')) {
-                            botBubble.innerHTML = '';
-                            botBubble.innerText = reply;
-                            const meta = document.createElement('span');
-                            meta.className = 'msg-meta';
-                            meta.innerText = formatTime();
-                            botBubble.appendChild(meta);
-                        } else {
-                            // Resume polling
-                            pollPromptStatus(item.promptId, botBubble, signal);
-                        }
-                    }
-                } catch (err) {
-                    if (err.name === 'AbortError') return;
-                    botBubble.innerHTML = `<span class="error-message">Error: ${err.message}</span>`;
-                    const meta = document.createElement('span');
-                    meta.className = 'msg-meta';
-                    meta.innerText = formatTime();
-                    botBubble.appendChild(meta);
-                }
+                //         if (state === 2 || (reply && reply.trim() !== '')) {
+                //             botBubble.innerHTML = '';
+                //             botBubble.innerText = reply;
+                //             const meta = document.createElement('span');
+                //             meta.className = 'msg-meta';
+                //             meta.innerText = formatTime();
+                //             botBubble.appendChild(meta);
+                //         } else {
+                //             // Resume polling
+                //             pollPromptStatus(item.promptId, botBubble, signal);
+                //         }
+                //     }
+                // } catch (err) {
+                //     if (err.name === 'AbortError') return;
+                //     botBubble.innerHTML = `<span class="error-message">Error: ${err.message}</span>`;
+                //     const meta = document.createElement('span');
+                //     meta.className = 'msg-meta';
+                //     meta.innerText = formatTime();
+                //     botBubble.appendChild(meta);
+                // }
             });
             
             if (prepend) {
