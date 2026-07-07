@@ -220,15 +220,34 @@
                 }
 
                 // Bind rename/delete to this card's context
-                menu.querySelector('.rename-btn').onclick = (ev) => {
+                menu.querySelector('.rename-btn').onclick = async (ev) => {
                     ev.stopPropagation();
                     menu.classList.remove('open');
+
                     const promptEl = card.querySelector('.history-item-prompt');
                     const currentText = promptEl.textContent;
                     const newName = prompt('Rename conversation:', currentText);
+
                     if (newName && newName.trim() && newName.trim() !== currentText) {
                         promptEl.textContent = newName.trim();
                         item.prompts = newName.trim();
+
+                        try {
+                            const res = await fetch('/update-promps', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    idPrompt: card.dataset.idPrompt,
+                                    prompts: newName.trim()
+                                })
+                            });
+
+                            if (!res.ok) {
+                                throw new Error(`Server error: ${res.status}`);
+                            }
+                        } catch (err) {
+                            alert(`Failed to update conversation: ${err.message}`);
+                        }
                     }
                 };
 

@@ -137,7 +137,7 @@ class PromptUpdateRequest(BaseModel):
         description="The unique ID of the prompt to update with a response.", 
         examples=[102]
     )
-    prompsResponce: str = Field(
+    prompts: str = Field(
         ..., 
         description="The response text to save for the prompt.", 
         examples=["Task failure alerts configured and tested."]
@@ -162,7 +162,7 @@ class PromptUpdateResponse(BaseModel):
     message: str = Field(
         ..., 
         description="Detailed success message.", 
-        examples=["Prompt response updated successfully"]
+        examples=["Prompt updated successfully"]
     )
 
 class PromptDeleteResponse(BaseModel):
@@ -574,7 +574,50 @@ def add_promps_responce(payload: PromptUpdateRequest):
             status_code=500,
             detail=f"Database error: {str(e)}"
         )
+    
+@app.post(
+    "/update-promps",
+    response_model=PromptUpdateResponse,
+    summary="Update prompt response",
+    description="Updates the response content for an existing prompt record, setting its promptType to 2 and updating the timestamp.",
+    tags=["Scheduler"]
+)
+def update_promps(payload: PromptUpdateRequest):
+    """
+    Update the prompts for a prompt by idPrompt.
+    """
+    try:
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                # 1. Verify if the idPrompt exists
+                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (payload.idPrompt,))
+                if not cursor.fetchone():
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Prompt ID {payload.idPrompt} not found."
+                    )
 
+                # 2. Update the record
+                sql = """
+                    UPDATE collab.prompts 
+                    SET prompts = %s, promptDate = %s 
+                    WHERE idPrompt = %s;
+                """
+                cursor.execute(sql, (payload.prompts, datetime.now(), payload.idPrompt))
+                connection.commit()
+                
+                return {
+                    "status": "success",
+                    "message": "Prompt updated successfully"
+                }
+        finally:
+            connection.close()
+    except pymysql.MySQLError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
 
 @app.post(
     "/delete-prompt",
