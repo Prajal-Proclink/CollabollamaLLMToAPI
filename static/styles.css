@@ -207,7 +207,7 @@
         }
 
         .history-item {
-            padding: 12px 14px;
+            padding: 10px 12px;
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
             border-radius: 12px;
@@ -215,6 +215,10 @@
             transition: all 0.2s ease;
             font-size: 0.85rem;
             text-align: left;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            position: relative;
         }
 
         .history-item:hover {
@@ -223,13 +227,18 @@
             transform: translateY(-1px);
         }
 
+        .history-item-body {
+            flex: 1;
+            min-width: 0;
+        }
+
         .history-item-prompt {
             font-weight: 500;
             color: var(--text-primary);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            margin-bottom: 4px;
+            margin-bottom: 2px;
         }
 
         .history-item-meta {
@@ -237,6 +246,107 @@
             justify-content: space-between;
             font-size: 0.75rem;
             color: var(--text-muted);
+        }
+
+        /* --- Kebab button --- */
+        .history-item-actions {
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .kebab-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            width: 26px;
+            height: 26px;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            padding: 0;
+            opacity: 0;
+            transition: opacity 0.15s ease, background 0.15s ease;
+        }
+
+        .history-item:hover .kebab-btn,
+        .kebab-btn:focus {
+            opacity: 1;
+        }
+
+        .kebab-btn span {
+            display: block;
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: background 0.15s ease;
+        }
+
+        .kebab-btn:hover {
+            background: rgba(124, 58, 237, 0.12);
+        }
+
+        .kebab-btn:hover span {
+            background: var(--accent-purple);
+        }
+
+        /* --- Kebab dropdown portal (appended to <body>, position:fixed) --- */
+        .kebab-menu {
+            position: fixed;
+            background: var(--bg-primary, #1a1a2e);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.32);
+            overflow: hidden;
+            z-index: 9999;
+            min-width: 140px;
+            display: none;
+            flex-direction: column;
+            transform-origin: top left;
+            animation: kebabIn 0.15s ease;
+        }
+
+        .kebab-menu.open {
+            display: flex;
+        }
+
+        @keyframes kebabIn {
+            from { opacity: 0; transform: scale(0.92) translateY(-4px); }
+            to   { opacity: 1; transform: scale(1)   translateY(0); }
+        }
+
+        .kebab-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 14px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s ease, color 0.15s ease;
+            width: 100%;
+        }
+
+        .kebab-menu-item svg {
+            fill: currentColor;
+            flex-shrink: 0;
+        }
+
+        .kebab-menu-item:hover {
+            background: rgba(124, 58, 237, 0.08);
+            color: var(--accent-purple);
+        }
+
+        .kebab-menu-item.delete-btn:hover {
+            background: rgba(220, 38, 38, 0.08);
+            color: #ef4444;
         }
 
         .load-more-btn {

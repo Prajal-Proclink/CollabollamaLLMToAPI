@@ -73,8 +73,8 @@ def test_get_chat_history():
     # First fetchone is COUNT(*), fetchall is records
     mock_cursor.fetchone.return_value = {"total": 25}
     mock_cursor.fetchall.return_value = [
-        {"idPrompt": 10, "prompts": "p10", "promptType": 2, "promptdate": "2026-07-02T10:00:00", "prompsResponce": "r10", "IsDeleted": 0},
-        {"idPrompt": 9, "prompts": "p9", "promptType": 2, "promptdate": "2026-07-02T09:50:00", "prompsResponce": "r9", "IsDeleted": 0}
+        {"idPrompt": 10, "prompts": "p10", "promptType": 2, "promptdate": "2026-07-02T10:00:00", "prompsResponce": "r10", "isDeleted": 0},
+        {"idPrompt": 9, "prompts": "p9", "promptType": 2, "promptdate": "2026-07-02T09:50:00", "prompsResponce": "r9", "isDeleted": 0}
     ]
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
     

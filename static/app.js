@@ -82,6 +82,14 @@
         newChatBtn.addEventListener('click', () => resetChatSession(false));
         tempChatBtn.addEventListener('click', () => resetChatSession(true));
 
+        // Close any open kebab menus when clicking elsewhere on the page
+        document.addEventListener('click', (e) => {
+            const portal = document.getElementById('kebab-portal');
+            if (portal && !portal.contains(e.target)) {
+                portal.classList.remove('open');
+            }
+        });
+
         function appendMessage(text, isUser, isLoader = false) {
             const currentWelcome = document.getElementById('welcomeScreen');
             if (currentWelcome && chatBody.contains(currentWelcome)) {
@@ -147,6 +155,29 @@
             return { bubble, stopBtn };
         }
 
+        // --- Kebab portal: single shared floating menu appended to <body> ---
+        function getKebabPortal() {
+            let menu = document.getElementById('kebab-portal');
+            if (!menu) {
+                menu = document.createElement('div');
+                menu.id = 'kebab-portal';
+                menu.className = 'kebab-menu';
+                menu.setAttribute('role', 'menu');
+                menu.innerHTML = `
+                    <button class="kebab-menu-item rename-btn" type="button" role="menuitem">
+                        <svg viewBox="0 0 24 24" width="14" height="14"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                        Rename
+                    </button>
+                    <button class="kebab-menu-item delete-btn" type="button" role="menuitem">
+                        <svg viewBox="0 0 24 24" width="14" height="14"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                        Delete
+                    </button>
+                `;
+                document.body.appendChild(menu);
+            }
+            return menu;
+        }
+
         // Add history item card to sidebar list
         function addHistoryItemToSidebar(item, prepend = true) {
             const card = document.createElement('div');
@@ -164,13 +195,71 @@
             }
 
             card.innerHTML = `
-                <div class="history-item-prompt">${escapeHTML(item.prompts)}</div>
-                <div class="history-item-meta">
-                    
+                <div class="history-item-body">
+                    <div class="history-item-prompt">${escapeHTML(item.prompts)}</div>
+                    <div class="history-item-meta"></div>
+                </div>
+                <div class="history-item-actions">
+                    <button class="kebab-btn" type="button" title="More options" aria-label="More options">
+                        <span></span><span></span><span></span>
+                    </button>
                 </div>
             `;
-            
+
+            // --- Kebab menu wiring (portal approach) ---
+            const kebabBtn = card.querySelector('.kebab-btn');
+
+            kebabBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const menu = getKebabPortal();
+
+                // If already open for this button, close it
+                if (menu.dataset.activeCard === card.dataset.idPrompt && menu.classList.contains('open')) {
+                    menu.classList.remove('open');
+                    return;
+                }
+
+                // Bind rename/delete to this card's context
+                menu.querySelector('.rename-btn').onclick = (ev) => {
+                    ev.stopPropagation();
+                    menu.classList.remove('open');
+                    const promptEl = card.querySelector('.history-item-prompt');
+                    const currentText = promptEl.textContent;
+                    const newName = prompt('Rename conversation:', currentText);
+                    if (newName && newName.trim() && newName.trim() !== currentText) {
+                        promptEl.textContent = newName.trim();
+                        item.prompts = newName.trim();
+                    }
+                };
+
+                menu.querySelector('.delete-btn').onclick = async (ev) => {
+                    ev.stopPropagation();
+                    menu.classList.remove('open');
+                    if (!confirm('Delete this conversation from the sidebar?')) return;
+
+                    try {
+                        const res = await fetch('/delete-prompt', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ idPrompt: item.idPrompt, isDeleted: 1 })
+                        });
+                        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+                        card.remove();
+                    } catch (err) {
+                        alert(`Failed to delete conversation: ${err.message}`);
+                    }
+                };
+
+                // Position the portal next to the kebab button
+                const rect = kebabBtn.getBoundingClientRect();
+                menu.style.top  = `${rect.bottom + window.scrollY + 4}px`;
+                menu.style.left = `${rect.right  + window.scrollX + 4}px`;
+                menu.dataset.activeCard = card.dataset.idPrompt;
+                menu.classList.add('open');
+            });
+
             card.addEventListener('click', async () => {
+
                 // Remove active classes from Temp Chat mode when viewing persistent history
                 isTemporaryChat = false;
                 tempChatBtn.classList.remove('active');
