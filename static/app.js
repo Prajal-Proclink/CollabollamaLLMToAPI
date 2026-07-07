@@ -206,7 +206,7 @@
                     }
                     const resData = await res.json();
                     if (resData.status === 'success' && resData.data) {
-                        const state = resData.data.processState;
+                        const state = resData.data.promptType;
                         const reply = resData.data.prompsResponce;
                         
                         if (state === 2 || (reply && reply.trim() !== '')) {
@@ -320,7 +320,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ prompts: promptText }),
+                    body: JSON.stringify({ prompts: promptText, promptType: isTemporaryChat ? 2 : 1 }),
                     signal: signal
                 });
 
@@ -348,7 +348,7 @@
                     const newItem = {
                         idPrompt: idPrompt,
                         prompts: promptText,
-                        processState: 1,
+                        promptType: 1,
                         promptdate: new Date().toISOString(),
                         prompsResponce: null
                     };
@@ -397,10 +397,10 @@
 
                     const data = await response.json();
                     if (data.status === 'success' && data.data) {
-                        const state = data.data.processState;
+                        const state = data.data.promptType;
                         const reply = data.data.prompsResponce;
 
-                        // processState 2 indicates completed
+                        // promptType 2 indicates completed
                         if (state === 2 || (reply && reply.trim() !== '')) {
                             clearInterval(currentInterval);
                             botBubble.innerHTML = '';
@@ -451,10 +451,10 @@
 
                     const data = await response.json();
                     if (data.status === 'success' && data.data) {
-                        const state = data.data.processState;
+                        const state = data.data.promptType;
                         const reply = data.data.prompsResponce;
 
-                        // processState 2 indicates completed
+                        // promptType 2 indicates completed
                         if (state === 2 || (reply && reply.trim() !== '')) {
                             clearInterval(currentInterval);
                             botBubble.innerHTML = '';

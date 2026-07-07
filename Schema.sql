@@ -12,7 +12,7 @@ CREATE TABLE `conversation` (
 CREATE TABLE `prompts` (
   `idPrompt` int NOT NULL,
   `prompts` mediumtext,
-  `processState` int NOT NULL DEFAULT '1',
+  `promptType` int NOT NULL DEFAULT '1',
   `promptDate` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `promptResponce` mediumtext,
   `isDeleted` bit(1) DEFAULT b'0',
