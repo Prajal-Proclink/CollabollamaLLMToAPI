@@ -1,3 +1,10 @@
+        // Mirror of Python Priority enum
+        const Priority = Object.freeze({
+            ACTIVE: 1,
+            COMPLETED: 2,
+            ERROR: 3
+        });
+
         const chatForm = document.getElementById('chatForm');
         const userInput = document.getElementById('userInput');
         const chatBody = document.getElementById('chatBody');
@@ -14,6 +21,7 @@
         let currentHistoryPage = 1;
         const historyLimit = 10;
         let totalHistoryRecords = 0;
+        let currentPromptId = null; // Persists idPrompt so /add-prompt is skipped on re-submit
 
         function formatTime() {
             const now = new Date();
@@ -60,6 +68,7 @@
 
             // Reset flags
             isTemporaryChat = isTemp;
+            currentPromptId = null; // Clear stored prompt ID for the new session
             if (isTemp) {
                 tempChatBtn.classList.add('active');
             } else {
@@ -166,68 +175,100 @@
                 isTemporaryChat = false;
                 tempChatBtn.classList.remove('active');
 
-                // Deselect other cards
+                // Deselect other cards, highlight selected
                 document.querySelectorAll('.history-item').forEach(c => c.style.borderColor = 'var(--border-color)');
                 card.style.borderColor = 'var(--accent-purple)';
-                
-                // Clear main chat area
-                chatBody.innerHTML = '';
-                
-                // Load clicked item details
-                appendMessage(item.prompts, true);
-                
-                const { bubble: botBubble, stopBtn } = appendMessage('', false, true);
-                
-                // Cancel existing request
+
+                // Cancel any active polling/request
                 if (currentAbortController) currentAbortController.abort();
                 if (currentInterval) clearInterval(currentInterval);
-                
+
+                // Set idPrompt context so re-submissions append to this session
+                currentPromptId = item.idPrompt;
+
+                // Clear main chat area
+                chatBody.innerHTML = '';
+
                 currentAbortController = new AbortController();
                 const { signal } = currentAbortController;
-                
-                if (stopBtn) {
-                    stopBtn.addEventListener('click', () => {
-                        if (currentAbortController) currentAbortController.abort();
-                        if (currentInterval) clearInterval(currentInterval);
-                        botBubble.innerHTML = `<span class="error-message">Request stopped.</span>`;
-                        const meta = document.createElement('span');
-                        meta.className = 'msg-meta';
-                        meta.innerText = formatTime();
-                        botBubble.appendChild(meta);
-                    });
-                }
-                
-                // Retrieve response status from DB
+
                 try {
-                    const res = await fetch(`/get-prompt-status?idPrompt=${item.idPrompt}`, { signal });
+                    // Fetch ALL conversation rows for this idPrompt (conversationState=0 = all)
+                    const res = await fetch(`/get-conversation-messages?idPrompt=${item.idPrompt}&conversationState=0`, { signal });
                     if (!res.ok) {
-                        botBubble.innerHTML = `<span class="error-message">Error fetching response status.</span>`;
+                        appendMessage('Error loading conversation history.', false);
                         return;
                     }
                     const resData = await res.json();
-                    if (resData.status === 'success' && resData.data) {
-                        const state = resData.data.promptType;
-                        const reply = resData.data.prompsResponce;
-                        
-                        if (state === 2 || (reply && reply.trim() !== '')) {
-                            botBubble.innerHTML = '';
-                            botBubble.innerText = reply;
-                            const meta = document.createElement('span');
-                            meta.className = 'msg-meta';
-                            meta.innerText = formatTime();
-                            botBubble.appendChild(meta);
+
+                    if (resData.status !== 'success' || !Array.isArray(resData.data) || resData.data.length === 0) {
+                        // No conversation records yet — show the prompt and a pending loader
+                        appendMessage(item.prompts, true);
+                        const { bubble: botBubble, stopBtn } = appendMessage('', false, true);
+                        if (stopBtn) {
+                            stopBtn.addEventListener('click', () => {
+                                if (currentAbortController) currentAbortController.abort();
+                                if (currentInterval) clearInterval(currentInterval);
+                                botBubble.innerHTML = `<span class="error-message">Request stopped.</span>`;
+                                const meta = document.createElement('span');
+                                meta.className = 'msg-meta';
+                                meta.innerText = formatTime();
+                                botBubble.appendChild(meta);
+                            });
+                        }
+                        pollConversationStatus(item.idPrompt, botBubble, signal);
+                        return;
+                    }
+
+                    const rows = resData.data;
+
+                    // Render each conversation exchange as chat bubbles
+                    let lastBotBubble = null;
+                    let lastRowPending = false;
+
+                    for (let i = 0; i < rows.length; i++) {
+                        const row = rows[i];
+                        const userText = row.conversation || '';
+                        const botText = row.conversationResponce || '';
+                        const state = row.conversationState; // 1=active/pending, 2=completed
+
+                        // User bubble
+                        if (userText.trim()) {
+                            appendMessage(userText, true);
+                        }
+
+                        if (state === Priority.COMPLETED && botText.trim()) {
+                            // Completed — render the bot reply inline (no loader)
+                            appendMessage(botText, false);
+                            lastRowPending = false;
                         } else {
-                            // Resume polling
-                            pollConversationStatus(item.idPrompt, botBubble, signal);
+                            // Still pending — show loader for this message
+                            const { bubble: botBubble, stopBtn } = appendMessage('', false, true);
+                            lastBotBubble = botBubble;
+                            lastRowPending = true;
+
+                            if (stopBtn) {
+                                stopBtn.addEventListener('click', () => {
+                                    if (currentAbortController) currentAbortController.abort();
+                                    if (currentInterval) clearInterval(currentInterval);
+                                    botBubble.innerHTML = `<span class="error-message">Request stopped.</span>`;
+                                    const meta = document.createElement('span');
+                                    meta.className = 'msg-meta';
+                                    meta.innerText = formatTime();
+                                    botBubble.appendChild(meta);
+                                });
+                            }
                         }
                     }
+
+                    // If last row is still pending, start polling for its response
+                    if (lastRowPending && lastBotBubble) {
+                        pollConversationStatus(item.idPrompt, lastBotBubble, signal);
+                    }
+
                 } catch (err) {
                     if (err.name === 'AbortError') return;
-                    botBubble.innerHTML = `<span class="error-message">Error: ${err.message}</span>`;
-                    const meta = document.createElement('span');
-                    meta.className = 'msg-meta';
-                    meta.innerText = formatTime();
-                    botBubble.appendChild(meta);
+                    appendMessage(`Error: ${err.message}`, false);
                 }
             });
             
@@ -241,7 +282,7 @@
         // Fetch paginated history from API
         async function loadHistory(page = 1) {
             try {
-                const response = await fetch(`/chat-history?page=${page}&limit=${historyLimit}`);
+                const response = await fetch(`/chat-history?page=${page}&limit=${historyLimit}&promptType=1`);
                 if (!response.ok) return;
                 const res = await response.json();
                 if (res.status === 'success' && res.data) {
@@ -314,49 +355,53 @@
             }
 
             try {
-                // 1. Call add-prompt endpoint
-                const response = await fetch('/add-prompt', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ prompts: promptText, promptType: isTemporaryChat ? 2 : 1 }),
-                    signal: signal
-                });
+                // 1. Call add-prompt only if no prompt ID is stored for this session
+                if (!currentPromptId) {
+                    const response = await fetch('/add-prompt', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ prompts: promptText, promptType: isTemporaryChat ? 2 : 1 }),
+                        signal: signal
+                    });
 
-                if (!response.ok) {
-                    throw new Error('Failed to register prompt');
-                }
-                const result = await response.json();
-                const idPrompt = result.idPrompt;
-                const response2 = await fetch('/add-conversation-message', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ conversation: promptText ,idPrompt: idPrompt }),
-                    signal: signal
-                });
+                    if (!response.ok) {
+                        throw new Error('Failed to register prompt');
+                    }
+                    const result = await response.json();
+                    currentPromptId = result.idPrompt; // Store for reuse
 
-                if (!response2.ok) {
-                    throw new Error('Failed to register prompt');
-                }
-                
-
-                // Prepend new prompt item to sidebar history list if NOT in temporary mode
-                if (!isTemporaryChat) {
+                    if (!isTemporaryChat) {
                     const newItem = {
-                        idPrompt: idPrompt,
+                        idPrompt: currentPromptId,
                         prompts: promptText,
                         promptType: 1,
                         promptdate: new Date().toISOString(),
                         prompsResponce: null
                     };
-                    addHistoryItemToSidebar(newItem, true);
+                        addHistoryItemToSidebar(newItem, true);
+                    }
+
                 }
 
-                // 2. Poll prompt status until response is ready
-                pollPromptStatus(idPrompt, botBubble, signal);
+                const response2 = await fetch('/add-conversation-message', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ conversation: promptText, idPrompt: currentPromptId }),
+                    signal: signal
+                });
+
+                if (!response2.ok) {
+                    throw new Error('Failed to register conversation message');
+                }
+
+                // Prepend new prompt item to sidebar history list if NOT in temporary mode
+
+                // 2. Poll conversation status until response is ready
+                pollConversationStatus(currentPromptId, botBubble, signal);
 
             } catch (err) {
                 if (err.name === 'AbortError') return;
@@ -440,7 +485,7 @@
                 }
 
                 try {
-                    const response = await fetch(`/get-conversation-messages?idPrompt=${idPrompt}&conversationState=2`, { signal });
+                    const response = await fetch(`/get-conversation-messages?idPrompt=${idPrompt}&conversationState=${Priority.COMPLETED}`, { signal });
                     if (!response.ok) {
                         if (response.status === 404) {
                             clearInterval(currentInterval);
