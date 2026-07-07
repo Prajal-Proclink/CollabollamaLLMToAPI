@@ -70,7 +70,7 @@ class PromptItem(BaseModel):
         description="The prompt text content.", 
         examples=["Generate a weekly summary report."]
     )
-    processState: Optional[int] = Field(
+    promptType: Optional[int] = Field(
         None, 
         description="Processing status state value.", 
         examples=[1]
@@ -85,7 +85,7 @@ class PromptItem(BaseModel):
         description="Response text generated for the prompt.", 
         examples=["Summary report generated successfully."]
     )
-    IsDeleted: Optional[bool] = Field(
+    isDeleted: Optional[bool] = Field(
         None, 
         description="Soft-delete status flag.", 
         examples=[False]
@@ -107,6 +107,11 @@ class PromptCreateRequest(BaseModel):
         ..., 
         description="The prompt text content to insert.", 
         examples=["Send email alerts for failed tasks."]
+    )
+    promptType: int = Field(
+        default=1,
+        description="Type of prompt: 1 for normal chat (newChatBtn), 2 for temporary chat (tempChatBtn).",
+        examples=[1, 2]
     )
 
 class PromptCreateResponse(BaseModel):
@@ -132,12 +137,22 @@ class PromptUpdateRequest(BaseModel):
         description="The unique ID of the prompt to update with a response.", 
         examples=[102]
     )
-    prompsResponce: str = Field(
+    prompts: str = Field(
         ..., 
         description="The response text to save for the prompt.", 
         examples=["Task failure alerts configured and tested."]
     )
-
+class DeletePromptRequest(BaseModel):
+    idPrompt: int = Field(
+        ..., 
+        description="The unique ID of the prompt to update with a response.", 
+        examples=[102]
+    )
+    isDeleted: int = Field(
+        ..., 
+        description="Flag indicating if the prompt should be deleted.", 
+        examples=[1]
+    )
 class PromptUpdateResponse(BaseModel):
     status: str = Field(
         ..., 
@@ -147,7 +162,7 @@ class PromptUpdateResponse(BaseModel):
     message: str = Field(
         ..., 
         description="Detailed success message.", 
-        examples=["Prompt response updated successfully"]
+        examples=["Prompt updated successfully"]
     )
 
 class PromptDeleteResponse(BaseModel):
@@ -163,7 +178,7 @@ class PromptDeleteResponse(BaseModel):
     )
 
 class PromptStatusData(BaseModel):
-    processState: Optional[int] = Field(
+    promptType: Optional[int] = Field(
         None, 
         description="Processing status state value.", 
         examples=[1]
@@ -182,7 +197,7 @@ class PromptStatusResponse(BaseModel):
     )
     data: PromptStatusData = Field(
         ..., 
-        description="The prompt status details containing processState and prompsResponce."
+        description="The prompt status details containing promptType and prompsResponce."
     )
 
 class ChatHistoryResponse(BaseModel):
@@ -314,10 +329,10 @@ def clean_db_row(row):
     if "promptResponce" in row:
         row["prompsResponce"] = row.pop("promptResponce")
     if "isDeleted" in row:
-        row["IsDeleted"] = row.pop("isDeleted")
+        row["isDeleted"] = row.pop("isDeleted")
 
     # Clean bit(1) fields
-    for bit_col in ["IsDeleted", "isdeleted"]:
+    for bit_col in ["isDeleted", "isdeleted"]:
         if bit_col in row:
             if isinstance(row[bit_col], bytes):
                 row[bit_col] = bool(int.from_bytes(row[bit_col], byteorder='big'))
@@ -343,24 +358,24 @@ def get_home():
     "/get-prompt",
     response_model=PromptResponse,
     summary="Retrieve local scheduler prompts",
-    description="Connects to the local MySQL database and fetches prompt records from the `collab.prompts` table, optionally filtered by processState. Passing processState=0 returns all records.",
+    description="Connects to the local MySQL database and fetches prompt records from the `collab.prompts` table, optionally filtered by promptType. Passing promptType=0 returns all records.",
     tags=["Scheduler"]
 )
-def get_prompt(processState: int = 0):
+def get_prompt(promptType: int = 0):
     """
     Get prompts from the collab.prompts table.
-    - **processState**: Pass 0 to fetch all records, or filter by a specific status (e.g., 1 or 2).
+    - **promptType**: Pass 0 to fetch all records, or filter by a specific status (e.g., 1 or 2).
     """
     try:
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
-                if processState == 0:
+                if promptType == 0:
                     sql = "SELECT * FROM collab.prompts;"
                     cursor.execute(sql)
                 else:
-                    sql = "SELECT * FROM collab.prompts WHERE processState = %s;"
-                    cursor.execute(sql, (processState,))
+                    sql = "SELECT * FROM collab.prompts WHERE promptType = %s;"
+                    cursor.execute(sql, (promptType,))
                 result = cursor.fetchall()
                 cleaned_result = [clean_db_row(row) for row in result]
                 return {
@@ -380,7 +395,7 @@ def get_prompt(processState: int = 0):
     "/get-prompt-status",
     response_model=PromptStatusResponse,
     summary="Get status of a specific prompt",
-    description="Fetches the processState and prompsResponce for a prompt record from the `collab.prompts` table by its idPrompt.",
+    description="Fetches the promptType and prompsResponce for a prompt record from the `collab.prompts` table by its idPrompt.",
     tags=["Scheduler"]
 )
 def get_prompt_status(idPrompt: int):
@@ -392,7 +407,7 @@ def get_prompt_status(idPrompt: int):
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
-                sql = "SELECT processState, promptResponce FROM collab.prompts WHERE idPrompt = %s;"
+                sql = "SELECT promptType, promptResponce FROM collab.prompts WHERE idPrompt = %s;"
                 cursor.execute(sql, (idPrompt,))
                 row = cursor.fetchone()
                 if not row:
@@ -403,7 +418,7 @@ def get_prompt_status(idPrompt: int):
                 return {
                     "status": "success",
                     "data": {
-                        "processState": row.get("processState"),
+                        "promptType": row.get("promptType"),
                         "prompsResponce": row.get("promptResponce")
                     }
                 }
@@ -423,11 +438,12 @@ def get_prompt_status(idPrompt: int):
     description="Fetches a list of prompts from the `collab.prompts` table ordered by idPrompt DESC with pagination parameters.",
     tags=["Scheduler"]
 )
-def get_chat_history(page: int = 1, limit: int = 10):
+def get_chat_history(page: int = 1, limit: int = 10, promptType: int = 0):
     """
     Get paginated chat prompt history.
     - **page**: The page number (starts at 1).
     - **limit**: Number of records per page.
+    - **promptType**: Filter by processing state (0 for all, otherwise specific state).
     """
     if page < 1:
         raise HTTPException(status_code=400, detail="Page must be greater than or equal to 1.")
@@ -440,13 +456,20 @@ def get_chat_history(page: int = 1, limit: int = 10):
         try:
             with connection.cursor() as cursor:
                 # Get total count
-                cursor.execute("SELECT COUNT(*) AS total FROM collab.prompts;")
+                if promptType == 0:
+                    cursor.execute("SELECT COUNT(*) AS total FROM collab.prompts WHERE isDeleted = 1;")
+                else:
+                    cursor.execute("SELECT COUNT(*) AS total FROM collab.prompts WHERE promptType = %s AND isDeleted = 1;", (promptType,))
                 total_row = cursor.fetchone()
                 total = total_row["total"] if total_row else 0
 
                 # Get records
-                sql = "SELECT * FROM collab.prompts ORDER BY idPrompt DESC LIMIT %s OFFSET %s;"
-                cursor.execute(sql, (limit, offset))
+                if promptType == 0:
+                    sql = "SELECT * FROM collab.prompts WHERE isDeleted = 1 ORDER BY idPrompt DESC LIMIT %s OFFSET %s;"
+                    cursor.execute(sql, (limit, offset))
+                else:
+                    sql = "SELECT * FROM collab.prompts WHERE promptType = %s AND isDeleted = 1 ORDER BY idPrompt DESC LIMIT %s OFFSET %s;"
+                    cursor.execute(sql, (promptType, limit, offset))
                 result = cursor.fetchall()
                 cleaned_result = [clean_db_row(row) for row in result]
 
@@ -470,12 +493,12 @@ def get_chat_history(page: int = 1, limit: int = 10):
     "/add-prompt",
     response_model=PromptCreateResponse,
     summary="Insert a new prompt",
-    description="Generates a new prompt ID and inserts a prompt record into `collab.prompts` with default processState=1 and current timestamp.",
+    description="Generates a new prompt ID and inserts a prompt record into `collab.prompts` with default promptType=1 and current timestamp.",
     tags=["Scheduler"]
 )
 def add_prompt(payload: PromptCreateRequest):
     """
-    Insert a prompt string into collab.prompts with processState=1 and current datetime.
+    Insert a prompt string into collab.prompts with promptType=1 and current datetime.
     """
     try:
         connection = get_db_connection()
@@ -488,10 +511,10 @@ def add_prompt(payload: PromptCreateRequest):
 
                 # 2. Insert the record
                 sql = """
-                    INSERT INTO collab.prompts (idPrompt, prompts, processState, promptDate, promptResponce, isDeleted)
+                    INSERT INTO collab.prompts (idPrompt, prompts, promptType, promptDate, promptResponce, isDeleted)
                     VALUES (%s, %s, %s, %s, %s, 0);
                 """
-                cursor.execute(sql, (next_id, payload.prompts, 1, datetime.now(), None))
+                cursor.execute(sql, (next_id, payload.prompts, payload.promptType, datetime.now(), None))
                 connection.commit()
                 
                 return {
@@ -512,12 +535,12 @@ def add_prompt(payload: PromptCreateRequest):
     "/add-prompsResponce",
     response_model=PromptUpdateResponse,
     summary="Update prompt response",
-    description="Updates the response content for an existing prompt record, setting its processState to 2 and updating the timestamp.",
+    description="Updates the response content for an existing prompt record, setting its promptType to 2 and updating the timestamp.",
     tags=["Scheduler"]
 )
 def add_promps_responce(payload: PromptUpdateRequest):
     """
-    Update the prompsResponce for a prompt by idPrompt, setting processState=2 and promptdate to current datetime.
+    Update the prompsResponce for a prompt by idPrompt, setting promptType=2 and promptdate to current datetime.
     """
     try:
         connection = get_db_connection()
@@ -534,7 +557,7 @@ def add_promps_responce(payload: PromptUpdateRequest):
                 # 2. Update the record
                 sql = """
                     UPDATE collab.prompts 
-                    SET promptResponce = %s, processState = 2, promptDate = %s 
+                    SET promptResponce = %s, promptType = 2, promptDate = %s 
                     WHERE idPrompt = %s;
                 """
                 cursor.execute(sql, (payload.prompsResponce, datetime.now(), payload.idPrompt))
@@ -551,36 +574,79 @@ def add_promps_responce(payload: PromptUpdateRequest):
             status_code=500,
             detail=f"Database error: {str(e)}"
         )
-
-
-@app.get(
-    "/delete-prompt",
-    response_model=PromptDeleteResponse,
-    summary="Soft-delete a prompt and purge old records",
-    description="Updates the IsDeleted column (soft delete) of a prompt by its idPrompt, and automatically hard-deletes any soft-deleted prompts older than 1 month.",
+    
+@app.post(
+    "/update-promps",
+    response_model=PromptUpdateResponse,
+    summary="Update prompt response",
+    description="Updates the response content for an existing prompt record, setting its promptType to 2 and updating the timestamp.",
     tags=["Scheduler"]
 )
-def delete_prompt(idPrompt: int, Isdelete: int = 1):
+def update_promps(payload: PromptUpdateRequest):
     """
-    Soft-delete a prompt using its idPrompt, and hard-delete soft-deleted prompts older than 1 month.
-    - **idPrompt**: The unique ID of the prompt.
-    - **Isdelete**: The value to set for the IsDeleted column (1 for soft-delete, 0 to restore).
+    Update the prompts for a prompt by idPrompt.
     """
     try:
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
                 # 1. Verify if the idPrompt exists
-                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (idPrompt,))
+                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (payload.idPrompt,))
                 if not cursor.fetchone():
                     raise HTTPException(
                         status_code=404,
-                        detail=f"Prompt ID {idPrompt} not found."
+                        detail=f"Prompt ID {payload.idPrompt} not found."
+                    )
+
+                # 2. Update the record
+                sql = """
+                    UPDATE collab.prompts 
+                    SET prompts = %s, promptDate = %s 
+                    WHERE idPrompt = %s;
+                """
+                cursor.execute(sql, (payload.prompts, datetime.now(), payload.idPrompt))
+                connection.commit()
+                
+                return {
+                    "status": "success",
+                    "message": "Prompt updated successfully"
+                }
+        finally:
+            connection.close()
+    except pymysql.MySQLError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
+
+@app.post(
+    "/delete-prompt",
+    response_model=PromptDeleteResponse,
+    summary="Soft-delete a prompt and purge old records",
+    description="Updates the isDeleted column (soft delete) of a prompt by its idPrompt, and automatically hard-deletes any soft-deleted prompts older than 1 month.",
+    tags=["Scheduler"]
+)
+def delete_prompt(payload: DeletePromptRequest):
+    """
+    Soft-delete a prompt using its idPrompt, and hard-delete soft-deleted prompts older than 1 month.
+    - **idPrompt**: The unique ID of the prompt.
+    - **Isdelete**: The value to set for the isDeleted column (1 for soft-delete, 0 to restore).
+    """
+    try:
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                # 1. Verify if the idPrompt exists
+                cursor.execute("SELECT 1 FROM collab.prompts WHERE idPrompt = %s;", (payload.idPrompt,))
+                if not cursor.fetchone():
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Prompt ID {payload.idPrompt} not found."
                     )
 
                 # 2. Soft-delete the prompt
                 update_sql = "UPDATE collab.prompts SET isDeleted = %s WHERE idPrompt = %s;"
-                cursor.execute(update_sql, (Isdelete, idPrompt))
+                cursor.execute(update_sql, (payload.Isdelete, payload.idPrompt))
 
                 # 3. Purge soft-deleted prompts older than 1 month (where isDeleted = 1)
                 purge_sql = """

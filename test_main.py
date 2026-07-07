@@ -34,7 +34,7 @@ def test_get_prompt_status_success():
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
     mock_cursor.fetchone.return_value = {
-        "processState": 2,
+        "promptType": 2,
         "prompsResponce": "Response generated"
     }
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
@@ -42,7 +42,7 @@ def test_get_prompt_status_success():
     with patch("main.get_db_connection", return_value=mock_conn):
         res = main.get_prompt_status(idPrompt=101)
         assert res["status"] == "success"
-        assert res["data"]["processState"] == 2
+        assert res["data"]["promptType"] == 2
         assert res["data"]["prompsResponce"] == "Response generated"
 
 def test_get_prompt_status_not_found():
@@ -73,8 +73,8 @@ def test_get_chat_history():
     # First fetchone is COUNT(*), fetchall is records
     mock_cursor.fetchone.return_value = {"total": 25}
     mock_cursor.fetchall.return_value = [
-        {"idPrompt": 10, "prompts": "p10", "processState": 2, "promptdate": "2026-07-02T10:00:00", "prompsResponce": "r10", "IsDeleted": 0},
-        {"idPrompt": 9, "prompts": "p9", "processState": 2, "promptdate": "2026-07-02T09:50:00", "prompsResponce": "r9", "IsDeleted": 0}
+        {"idPrompt": 10, "prompts": "p10", "promptType": 2, "promptdate": "2026-07-02T10:00:00", "prompsResponce": "r10", "isDeleted": 0},
+        {"idPrompt": 9, "prompts": "p9", "promptType": 2, "promptdate": "2026-07-02T09:50:00", "prompsResponce": "r9", "isDeleted": 0}
     ]
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
     
