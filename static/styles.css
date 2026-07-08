@@ -224,7 +224,7 @@
         .history-item:hover {
             border-color: var(--accent-purple);
             background: rgba(124, 58, 237, 0.02);
-            transform: translateY(-1px);
+            transform: translateY(-0.3px);
         }
 
         .history-item-body {

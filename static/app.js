@@ -548,23 +548,31 @@
                         return;
                     }
 
+                    
                     const data = await response.json();
-                    if (data.status === 'success' && data.data) {
-                        const state = data.data.promptType;
-                        const reply = data.data.prompsResponce;
+
+                    if (data.status === 'success' && data.data && data.data.length > 0) {
+
+                        // Get the last conversation record
+                        const latestConversation = data.data[data.data.length - 1];
+
+                        const state = latestConversation.conversationState;
+                        const reply = latestConversation.conversationResponce;
 
                         // promptType 2 indicates completed
                         if (state === 2 || (reply && reply.trim() !== '')) {
                             clearInterval(currentInterval);
+
                             botBubble.innerHTML = '';
                             botBubble.innerText = reply;
-                            
+
                             const meta = document.createElement('span');
                             meta.className = 'msg-meta';
                             meta.innerText = formatTime();
                             botBubble.appendChild(meta);
                         }
                     }
+
                 } catch (err) {
                     if (err.name === 'AbortError') return;
                     clearInterval(currentInterval);
@@ -579,7 +587,14 @@
         async function pollConversationStatus(idPrompt, botBubble, signal) {
             const maxAttempts = 90; // 2+ minutes max
             let attempts = 0;
-
+            const response = await fetch(`/chat-process`);
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            clearInterval(currentInterval);
+                            throw new Error('Process server not working.');
+                        }
+                        return;
+                    }
             currentInterval = setInterval(async () => {
                 attempts++;
                 if (attempts > maxAttempts) {
@@ -593,7 +608,7 @@
                 }
 
                 try {
-                    const response = await fetch(`/get-conversation-messages?idPrompt=${idPrompt}&conversationState=${Priority.COMPLETED}`, { signal });
+                    const response = await fetch(`/get-conversation-messages?idPrompt=${idPrompt}`, { signal });
                     if (!response.ok) {
                         if (response.status === 404) {
                             clearInterval(currentInterval);
@@ -603,16 +618,22 @@
                     }
 
                     const data = await response.json();
-                    if (data.status === 'success' && data.data) {
-                        const state = data.data.promptType;
-                        const reply = data.data.prompsResponce;
+
+                    if (data.status === 'success' && data.data && data.data.length > 0) {
+
+                        // Get the last conversation record
+                        const latestConversation = data.data[data.data.length - 1];
+
+                        const state = latestConversation.conversationState;
+                        const reply = latestConversation.conversationResponce;
 
                         // promptType 2 indicates completed
                         if (state === 2 || (reply && reply.trim() !== '')) {
                             clearInterval(currentInterval);
+
                             botBubble.innerHTML = '';
                             botBubble.innerText = reply;
-                            
+
                             const meta = document.createElement('span');
                             meta.className = 'msg-meta';
                             meta.innerText = formatTime();

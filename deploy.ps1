@@ -1,4 +1,4 @@
-$workingDir = "C:\Users\prajal.patel\source\repos\PythonTest"
+$workingDir = "C:\Users\prajal.patel\source\repos\CollabollamaLLMToAPI"
 
 # Setup command to run python -m uvicorn main:app minimized
 $cmdLine = "cmd.exe /c start /min python.exe -m uvicorn main:app --app-dir `"$workingDir`""
