@@ -2,12 +2,16 @@ import os
 import json
 import pymysql
 import requests
+import time
+import requests
 from datetime import datetime
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from threading import Thread
+
 
 app = FastAPI(
     title="Windows Scheduler Local API",
@@ -57,6 +61,59 @@ def get_db_connection() -> pymysql.Connection:
     db_params = config.get("DB_CONFIG", {}).copy()
     db_params["cursorclass"] = pymysql.cursors.DictCursor
     return pymysql.connect(**db_params)
+
+def process_pending_conversations():
+
+    base_url = "http://127.0.0.1:8000"
+
+    while True:
+
+        response = requests.get(
+            f"{base_url}/get-process-pending",
+            params={"conversationState": 1}
+        )
+
+        data = response.json().get("data", [])
+
+        if len(data) == 0:
+            break
+
+        for item in data:
+
+            id_conversation = item["idConversation"]
+            conversation = item["conversation"]
+
+            try:
+                chat_resp = requests.post(
+                    f"{base_url}/chat",
+                    params={"prompt": conversation}
+                )
+
+                chat_text = chat_resp.json().get("response", "")
+
+                requests.post(
+                    f"{base_url}/update-conversation-response",
+                    json={
+                        "idConversation": id_conversation,
+                        "conversationResponce": chat_text
+                    }
+                )
+
+            except Exception as ex:
+                print(ex)
+
+        time.sleep(10)
+
+
+@app.post("/chat-process")
+def start_chat_process():
+
+    Thread(target=process_pending_conversations, daemon=True).start()
+
+    return {
+        "status": "success",
+        "message": "Chat process started"
+    }
 
 # Swagger UI Schema Models
 class PromptItem(BaseModel):
@@ -291,10 +348,14 @@ class ConversationStatusData(BaseModel):
     conversationState: int = Field(..., description="Processing status state value.", examples=[1])
     conversationResponce: Optional[str] = Field(None, description="Response text generated for the message.")
 
+class ConversationStatusItem(BaseModel):
+    conversation: str = Field(..., description="Conversation of the operation.", examples=["success"])
+    idConversation: int = Field(..., description="Conversation ID of the operation.", examples=[1])
+    conversationState: int = Field(..., description="Processing status state value.", examples=[1])
+
 class ConversationStatusResponse(BaseModel):
     status: str = Field(..., description="Status of the operation.", examples=["success"])
-    data: ConversationStatusData = Field(..., description="The conversation message status details.")
-
+    data: List[ConversationStatusItem] = Field(..., description="List of conversation messages for the session.")
 
 class DBConfigModel(BaseModel):
     host: Optional[str] = Field(None, description="Database host server", examples=["127.0.0.1"])
@@ -457,18 +518,18 @@ def get_chat_history(page: int = 1, limit: int = 10, promptType: int = 0):
             with connection.cursor() as cursor:
                 # Get total count
                 if promptType == 0:
-                    cursor.execute("SELECT COUNT(*) AS total FROM collab.prompts WHERE isDeleted = 1;")
+                    cursor.execute("SELECT COUNT(*) AS total FROM collab.prompts WHERE isDeleted = 0;")
                 else:
-                    cursor.execute("SELECT COUNT(*) AS total FROM collab.prompts WHERE promptType = %s AND isDeleted = 1;", (promptType,))
+                    cursor.execute("SELECT COUNT(*) AS total FROM collab.prompts WHERE promptType = %s AND isDeleted = 0;", (promptType,))
                 total_row = cursor.fetchone()
                 total = total_row["total"] if total_row else 0
 
                 # Get records
                 if promptType == 0:
-                    sql = "SELECT * FROM collab.prompts WHERE isDeleted = 1 ORDER BY idPrompt DESC LIMIT %s OFFSET %s;"
+                    sql = "SELECT * FROM collab.prompts WHERE isDeleted = 0 ORDER BY idPrompt DESC LIMIT %s OFFSET %s;"
                     cursor.execute(sql, (limit, offset))
                 else:
-                    sql = "SELECT * FROM collab.prompts WHERE promptType = %s AND isDeleted = 1 ORDER BY idPrompt DESC LIMIT %s OFFSET %s;"
+                    sql = "SELECT * FROM collab.prompts WHERE promptType = %s AND isDeleted = 0 ORDER BY idPrompt DESC LIMIT %s OFFSET %s;"
                     cursor.execute(sql, (promptType, limit, offset))
                 result = cursor.fetchall()
                 cleaned_result = [clean_db_row(row) for row in result]
@@ -630,7 +691,7 @@ def delete_prompt(payload: DeletePromptRequest):
     """
     Soft-delete a prompt using its idPrompt, and hard-delete soft-deleted prompts older than 1 month.
     - **idPrompt**: The unique ID of the prompt.
-    - **Isdelete**: The value to set for the isDeleted column (1 for soft-delete, 0 to restore).
+    - **isdelete**: The value to set for the isDeleted column (1 for soft-delete, 0 to restore).
     """
     try:
         connection = get_db_connection()
@@ -646,7 +707,7 @@ def delete_prompt(payload: DeletePromptRequest):
 
                 # 2. Soft-delete the prompt
                 update_sql = "UPDATE collab.prompts SET isDeleted = %s WHERE idPrompt = %s;"
-                cursor.execute(update_sql, (payload.Isdelete, payload.idPrompt))
+                cursor.execute(update_sql, (payload.isDeleted, payload.idPrompt))
 
                 # 3. Purge soft-deleted prompts older than 1 month (where isDeleted = 1)
                 purge_sql = """
@@ -685,7 +746,7 @@ def chat(prompt: str):
     ollama_url = config.get("OLLAMA_URL", "http://localhost:11434/api/generate")
 
     payload = {
-        "model": "llama3",
+        "model": "phi3:3.8b-mini-4k-instruct-q4_K_M",
         "prompt": prompt,
         "stream": False
     }
@@ -826,7 +887,39 @@ def get_conversation_message_status(idConversation: int):
             status_code=500,
             detail=f"Database error: {str(e)}"
         )
+    
 
+@app.get(
+    "/get-process-pending",
+    response_model=ConversationStatusResponse,
+    summary="Get status of a specific conversation message",
+    description="Fetches the conversationState and conversationResponce for a conversation record from `collab.conversation` by its idConversation.",
+    tags=["Conversation"]
+)
+def get_conversation_message_status(conversationState: int):
+    """
+    Get processing status and response of a conversation message.
+    - **conversationState**: The state of the conversation message.
+    """
+    try:
+        connection = get_db_connection()
+        try:
+            with connection.cursor() as cursor:
+                sql = "SELECT idConversation, conversationState, conversation FROM collab.conversation WHERE conversationState = %s;"
+                cursor.execute(sql, (conversationState,))
+                result = cursor.fetchall()
+                cleaned_result = [clean_db_row(row) for row in result]
+                return {
+                    "status": "success",
+                    "data": cleaned_result
+                }
+        finally:
+            connection.close()
+    except pymysql.MySQLError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
 
 @app.post(
     "/add-conversation-message",
@@ -921,3 +1014,14 @@ def update_conversation_response(payload: ConversationUpdateRequest):
             status_code=500,
             detail=f"Database error: {str(e)}"
         )
+
+
+@app.post("/chat-process")
+def start_chat_process():
+
+    Thread(target=process_pending_conversations, daemon=True).start()
+
+    return {
+        "status": "success",
+        "message": "Chat process started"
+    }

@@ -548,23 +548,31 @@
                         return;
                     }
 
+                    
                     const data = await response.json();
-                    if (data.status === 'success' && data.data) {
-                        const state = data.data.promptType;
-                        const reply = data.data.prompsResponce;
+
+                    if (data.status === 'success' && data.data && data.data.length > 0) {
+
+                        // Get the last conversation record
+                        const latestConversation = data.data[data.data.length - 1];
+
+                        const state = latestConversation.conversationState;
+                        const reply = latestConversation.conversationResponce;
 
                         // promptType 2 indicates completed
                         if (state === 2 || (reply && reply.trim() !== '')) {
                             clearInterval(currentInterval);
+
                             botBubble.innerHTML = '';
                             botBubble.innerText = reply;
-                            
+
                             const meta = document.createElement('span');
                             meta.className = 'msg-meta';
                             meta.innerText = formatTime();
                             botBubble.appendChild(meta);
                         }
                     }
+
                 } catch (err) {
                     if (err.name === 'AbortError') return;
                     clearInterval(currentInterval);
@@ -603,16 +611,22 @@
                     }
 
                     const data = await response.json();
-                    if (data.status === 'success' && data.data) {
-                        const state = data.data.promptType;
-                        const reply = data.data.prompsResponce;
+
+                    if (data.status === 'success' && data.data && data.data.length > 0) {
+
+                        // Get the last conversation record
+                        const latestConversation = data.data[data.data.length - 1];
+
+                        const state = latestConversation.conversationState;
+                        const reply = latestConversation.conversationResponce;
 
                         // promptType 2 indicates completed
                         if (state === 2 || (reply && reply.trim() !== '')) {
                             clearInterval(currentInterval);
+
                             botBubble.innerHTML = '';
                             botBubble.innerText = reply;
-                            
+
                             const meta = document.createElement('span');
                             meta.className = 'msg-meta';
                             meta.innerText = formatTime();
