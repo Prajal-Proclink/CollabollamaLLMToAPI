@@ -587,7 +587,14 @@
         async function pollConversationStatus(idPrompt, botBubble, signal) {
             const maxAttempts = 90; // 2+ minutes max
             let attempts = 0;
-
+            const response = await fetch(`/chat-process`);
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            clearInterval(currentInterval);
+                            throw new Error('Process server not working.');
+                        }
+                        return;
+                    }
             currentInterval = setInterval(async () => {
                 attempts++;
                 if (attempts > maxAttempts) {
@@ -601,7 +608,7 @@
                 }
 
                 try {
-                    const response = await fetch(`/get-conversation-messages?idPrompt=${idPrompt}&conversationState=${Priority.COMPLETED}`, { signal });
+                    const response = await fetch(`/get-conversation-messages?idPrompt=${idPrompt}`, { signal });
                     if (!response.ok) {
                         if (response.status === 404) {
                             clearInterval(currentInterval);

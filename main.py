@@ -82,11 +82,21 @@ def process_pending_conversations():
 
             id_conversation = item["idConversation"]
             conversation = item["conversation"]
+            id_Prompt = item["idPrompt"]
+
+
+            response = requests.get(
+                f"{base_url}/conversation-history",
+                params={"idPrompt": id_Prompt}
+            )
+            conversation_context = build_conversation_context(response.json().get("data", []), conversation)
+
+            print(f"Built conversation context for idConversation {id_conversation}: {conversation_context} \n propmt: {id_Prompt}   ") 
 
             try:
                 chat_resp = requests.post(
                     f"{base_url}/chat",
-                    params={"prompt": conversation}
+                    params={"prompt": conversation_context}
                 )
 
                 chat_text = chat_resp.json().get("response", "")
@@ -104,16 +114,28 @@ def process_pending_conversations():
 
         time.sleep(10)
 
+def build_conversation_context(history, current_message):
+    context = ""
 
-@app.post("/chat-process")
-def start_chat_process():
+    for item in history:
+        if item.get("conversation"):
+            context += f"User: {item['conversation']}\n"
 
-    Thread(target=process_pending_conversations, daemon=True).start()
+        if item.get("conversationResponce"):
+            context += f"Assistant: {item['conversationResponce']}\n\n"
 
-    return {
-        "status": "success",
-        "message": "Chat process started"
-    }
+    context += f"User: {current_message}\nAssistant:"
+    return context
+
+# @app.post("/chat-process")
+# def start_chat_process():
+
+#     Thread(target=process_pending_conversations, daemon=True).start()
+
+#     return {
+#         "status": "success",
+#         "message": "Chat process started"
+#     }
 
 # Swagger UI Schema Models
 class PromptItem(BaseModel):
@@ -350,6 +372,7 @@ class ConversationStatusData(BaseModel):
 
 class ConversationStatusItem(BaseModel):
     conversation: str = Field(..., description="Conversation of the operation.", examples=["success"])
+    idPrompt: int = Field(..., description="Prompt ID of the operation.", examples=[1])
     idConversation: int = Field(..., description="Conversation ID of the operation.", examples=[1])
     conversationState: int = Field(..., description="Processing status state value.", examples=[1])
 
@@ -372,6 +395,30 @@ class ConfigUpdateResponse(BaseModel):
     status: str = Field(..., description="Response status", examples=["success"])
     message: str = Field(..., description="Success message", examples=["Configuration updated successfully"])
     config: dict = Field(..., description="The complete, updated configuration dictionary")
+
+class ConversationHistoryItem(BaseModel):
+    idConversation: int = Field(
+        ...,
+        description="Conversation ID",
+        examples=[1]
+    )
+    conversation: Optional[str] = Field(
+        None,
+        description="Conversation text"
+    )
+    conversationResponce: Optional[str] = Field(
+        None,
+        description="Conversation response text"
+    )
+
+
+class ConversationHistoryByPromptResponse(BaseModel):
+    status: str = Field(
+        ...,
+        description="Operation status",
+        examples=["success"]
+    )
+    data: List[ConversationHistoryItem]
 
 
 def clean_db_row(row):
@@ -849,44 +896,44 @@ def get_conversation_messages(idPrompt: int, conversationState: int = 0):
         )
 
 
-@app.get(
-    "/get-conversation-message-status",
-    response_model=ConversationStatusResponse,
-    summary="Get status of a specific conversation message",
-    description="Fetches the conversationState and conversationResponce for a conversation record from `collab.conversation` by its idConversation.",
-    tags=["Conversation"]
-)
-def get_conversation_message_status(idConversation: int):
-    """
-    Get processing status and response of a conversation message.
-    - **idConversation**: The unique ID of the conversation message.
-    """
-    try:
-        connection = get_db_connection()
-        try:
-            with connection.cursor() as cursor:
-                sql = "SELECT conversationState, conversationResponce FROM collab.conversation WHERE idConversation = %s;"
-                cursor.execute(sql, (idConversation,))
-                row = cursor.fetchone()
-                if not row:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"Conversation ID {idConversation} not found."
-                    )
-                return {
-                    "status": "success",
-                    "data": {
-                        "conversationState": row.get("conversationState"),
-                        "conversationResponce": row.get("conversationResponce")
-                    }
-                }
-        finally:
-            connection.close()
-    except pymysql.MySQLError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Database error: {str(e)}"
-        )
+# @app.get(
+#     "/get-conversation-message-status",
+#     response_model=ConversationStatusResponse,
+#     summary="Get status of a specific conversation message",
+#     description="Fetches the conversationState and conversationResponce for a conversation record from `collab.conversation` by its idConversation.",
+#     tags=["Conversation"]
+# )
+# def get_conversation_message_status(idConversation: int):
+#     """
+#     Get processing status and response of a conversation message.
+#     - **idConversation**: The unique ID of the conversation message.
+#     """
+#     try:
+#         connection = get_db_connection()
+#         try:
+#             with connection.cursor() as cursor:
+#                 sql = "SELECT conversationState, conversationResponce FROM collab.conversation WHERE idConversation = %s;"
+#                 cursor.execute(sql, (idConversation,))
+#                 row = cursor.fetchone()
+#                 if not row:
+#                     raise HTTPException(
+#                         status_code=404,
+#                         detail=f"Conversation ID {idConversation} not found."
+#                     )
+#                 return {
+#                     "status": "success",
+#                     "data": {
+#                         "conversationState": row.get("conversationState"),
+#                         "conversationResponce": row.get("conversationResponce")
+#                     }
+#                 }
+#         finally:
+#             connection.close()
+#     except pymysql.MySQLError as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Database error: {str(e)}"
+#         )
     
 
 @app.get(
@@ -905,7 +952,7 @@ def get_conversation_message_status(conversationState: int):
         connection = get_db_connection()
         try:
             with connection.cursor() as cursor:
-                sql = "SELECT idConversation, conversationState, conversation FROM collab.conversation WHERE conversationState = %s;"
+                sql = "SELECT idConversation, idPrompt , conversationState, conversation FROM collab.conversation WHERE conversationState = %s;"
                 cursor.execute(sql, (conversationState,))
                 result = cursor.fetchall()
                 cleaned_result = [clean_db_row(row) for row in result]
@@ -1016,7 +1063,7 @@ def update_conversation_response(payload: ConversationUpdateRequest):
         )
 
 
-@app.post("/chat-process")
+@app.get("/chat-process")
 def start_chat_process():
 
     Thread(target=process_pending_conversations, daemon=True).start()
@@ -1025,3 +1072,49 @@ def start_chat_process():
         "status": "success",
         "message": "Chat process started"
     }
+
+@app.get(
+    "/conversation-history",
+    response_model=ConversationHistoryByPromptResponse,
+    summary="Get conversation history by Prompt ID",
+    description="Fetches conversation records from collab.conversation using idPrompt and returns idConversation, conversation, and conversationResponce.",
+    tags=["Conversation"]
+)
+def conversation_history(idPrompt: int):
+    """
+    Get conversation history by Prompt ID.
+
+    - **idPrompt**: Parent prompt identifier.
+    """
+    try:
+        connection = get_db_connection()
+
+        try:
+            with connection.cursor() as cursor:
+                sql = """
+                    SELECT
+                        idConversation,
+                        conversation,
+                        conversationResponce
+                    FROM collab.conversation
+                    WHERE idPrompt = %s
+                    AND isdeleted = 0
+                    ORDER BY idConversation ASC;
+                """
+
+                cursor.execute(sql, (idPrompt,))
+                result = cursor.fetchall()
+
+                return {
+                    "status": "success",
+                    "data": result
+                }
+
+        finally:
+            connection.close()
+
+    except pymysql.MySQLError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error: {str(e)}"
+        )
