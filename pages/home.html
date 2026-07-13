@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollama Chat</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <!-- Mobile Drawer Overlay -->
+    <div class="drawer-overlay" id="drawerOverlay"></div>
+
+    <div class="app-layout">
+        <!-- LEFT SIDEBAR -->
+        <aside class="sidebar" id="sidebar">
+            <!-- Top Header -->
+            <div class="sidebar-header">
+                <div class="app-logo">
+                    <div class="logo-icon">🦙</div>
+                </div>
+                <!-- <button class="apps-menu-btn" title="Apps menu">
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                        <rect x="1" y="1" width="4.5" height="4.5" rx="1" fill="currentColor"/>
+                        <rect x="6.75" y="1" width="4.5" height="4.5" rx="1" fill="currentColor"/>
+                        <rect x="12.5" y="1" width="4.5" height="4.5" rx="1" fill="currentColor"/>
+                        <rect x="1" y="6.75" width="4.5" height="4.5" rx="1" fill="currentColor"/>
+                        <rect x="6.75" y="6.75" width="4.5" height="4.5" rx="1" fill="currentColor"/>
+                        <rect x="12.5" y="6.75" width="4.5" height="4.5" rx="1" fill="currentColor"/>
+                        <rect x="1" y="12.5" width="4.5" height="4.5" rx="1" fill="currentColor"/>
+                        <rect x="6.75" y="12.5" width="4.5" height="4.5" rx="1" fill="currentColor"/>
+                        <rect x="12.5" y="12.5" width="4.5" height="4.5" rx="1" fill="currentColor"/>
+                    </svg>
+                </button> -->
+            </div>
+
+            <!-- Main Actions -->
+            <div class="sidebar-actions">
+                <button class="nav-item new-chat-item active" id="newChatBtn" type="button">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    <span>New chat</span>
+                </button>
+                <button class="nav-item" id="searchBtn" type="button">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <span>Search</span>
+                </button>
+                <button class="nav-item" id="libraryBtn" type="button">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                    </svg>
+                    <span>Library</span>
+                </button>
+            </div>
+
+            <!-- Agents Section -->
+            <!-- <div class="sidebar-section">
+                <div class="section-label">Agents</div>
+                <div class="agent-list">
+                    <button class="nav-item agent-item" type="button">
+                        <div class="agent-icon planner-icon">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 1L14 5V11L8 15L2 11V5L8 1Z" fill="url(#plannerGrad)"/>
+                                <defs>
+                                    <linearGradient id="plannerGrad" x1="2" y1="1" x2="14" y2="15">
+                                        <stop offset="0%" stop-color="#a855f7"/>
+                                        <stop offset="100%" stop-color="#7c3aed"/>
+                                    </linearGradient>
+                                </defs>
+                            </svg>
+                        </div>
+                        <span>Planner</span>
+                    </button>
+                    <button class="nav-item agent-item" type="button">
+                        <span class="add-agent-icon">+</span>
+                        <span>New agent</span>
+                    </button>
+                    <button class="nav-item agent-item" type="button">
+                        <span class="more-icon">···</span>
+                        <span>More agents</span>
+                    </button>
+                </div>
+            </div> -->
+
+            <!-- Chats Section -->
+            <div class="sidebar-section chats-section">
+                <div class="section-label">Chats</div>
+                <div class="chats-list" id="historyList">
+                    <!-- History items load here -->
+                </div>
+                <button class="load-more-btn" id="loadMoreBtn" type="button" style="display: none;">Load More</button>
+            </div>
+
+            <!-- Bottom Profile -->
+            <div class="sidebar-footer">
+                <div class="profile-container">
+                    <div class="avatar">
+                        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Crect width='32' height='32' rx='16' fill='%23e5e7eb'/%3E%3Ctext x='16' y='21' text-anchor='middle' fill='%236b7280' font-family='Inter,sans-serif' font-size='14' font-weight='500'%3EPP%3C/text%3E%3C/svg%3E" alt="avatar">
+                    </div>
+                    <div class="profile-info">
+                        <div class="profile-name">Prajal Patel</div>
+                        <div class="profile-status">Local Chat</div>
+                    </div>
+                    <button class="options-btn" title="More options">···</button>
+                </div>
+                <button class="upgrade-btn" type="button">Upgrade</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CHAT AREA -->
+        <main class="main-chat">
+            <!-- Mobile Header (hidden on desktop) -->
+            <div class="mobile-header">
+                <div class="mobile-header-left">
+                    <button class="mobile-hamburger" id="hamburgerBtn" type="button" title="Open menu">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="3" y1="6" x2="21" y2="6"/>
+                            <line x1="3" y1="12" x2="21" y2="12"/>
+                            <line x1="3" y1="18" x2="21" y2="18"/>
+                        </svg>
+                    </button>
+                    <!-- <button class="toolbar-icon-btn shield-icon" type="button" title="Security check">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            <polyline points="9 12 11 14 15 10" stroke="#16a34a" stroke-width="2"/>
+                        </svg>
+                    </button> -->
+                </div>
+                <div class="mobile-header-right">
+                    <div class="split-btn">
+                        <button class="split-btn-primary" type="button" title="Compose">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <button class="toolbar-icon-btn ellipsis-btn" type="button" title="More options">
+                        <span class="ellipsis-dot"></span>
+                        <span class="ellipsis-dot"></span>
+                        <span class="ellipsis-dot"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Desktop Toolbar (hidden on mobile) -->
+            <div class="toolbar desktop-toolbar">
+                <div class="toolbar-row">
+                    <!-- Incognito Icon (visible in temp mode) -->
+                    <button class="toolbar-icon-btn incognito-icon" id="incognitoIcon" type="button" title="Temporary chat mode" style="display: none;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 11h18"/>
+                            <path d="M5 11V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/>
+                            <path d="M7 16l-2 5"/>
+                            <path d="M17 16l2 5"/>
+                            <circle cx="8" cy="11" r="2"/>
+                            <circle cx="16" cy="11" r="2"/>
+                            <path d="M10 11h4"/>
+                        </svg>
+                    </button>
+
+                    <div class="toolbar-spacer"></div>
+
+                    <!-- Auto Dropdown -->
+                    <button class="auto-dropdown" type="button" title="Model selector">
+                        <span>Auto</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                    </button>
+
+                    <!-- Split Action Button -->
+                    <div class="split-btn-wrapper">
+                        <div class="split-btn">
+                            <button class="split-btn-primary" type="button" title="Compose">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                </svg>
+                            </button>
+                            <div class="split-btn-divider"></div>
+                            <button class="split-btn-dropdown" id="splitDropdownBtn" type="button" title="More actions">
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <polyline points="6 9 12 15 18 9"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <!-- Split Button Dropdown Menu -->
+                        <div class="split-dropdown-menu" id="splitDropdownMenu">
+                            <button class="split-dropdown-item" id="tempChatToggle" type="button">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 2">
+                                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                                </svg>
+                                <span>Temporary chat</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Status Icons -->
+                    <!-- <button class="toolbar-icon-btn shield-icon" type="button" title="Security check">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                            <polyline points="9 12 11 14 15 10" stroke="#16a34a" stroke-width="2"/>
+                        </svg>
+                    </button> -->
+                </div>
+
+                <!-- Temporary Chat Pill (visible in temp mode) -->
+                <!-- <div class="temp-chat-pill" id="tempChatPill" style="display: none;">
+                    <svg class="temp-chat-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 2">
+                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                    </svg>
+                    <span class="temp-chat-text">Temporary chat</span>
+                </div> -->
+            </div>
+
+            <!-- Center Landing Content -->
+            <div class="chat-content" id="chatBody">
+                <div class="welcome-screen" id="welcomeScreen">
+                    <h1 class="welcome-heading">What can I help you with?</h1>
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <form class="input-form" id="chatForm">
+                        <div class="input-box">
+                            <button class="input-action attach-btn" type="button" title="Attach file">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="12" y1="5" x2="12" y2="19"/>
+                                    <line x1="5" y1="12" x2="19" y2="12"/>
+                                </svg>
+                            </button>
+                            <input
+                                type="text"
+                                class="input-field"
+                                id="userInput"
+                                placeholder="Message"
+                                autocomplete="off"
+                                required
+                            >
+                            <button class="input-action mic-btn" type="button" title="Voice input">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                    <line x1="12" y1="19" x2="12" y2="23"/>
+                                    <line x1="8" y1="23" x2="16" y2="23"/>
+                                </svg>
+                            </button>
+                            <button class="submit-btn" type="submit" title="Send message">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="5" y1="12" x2="19" y2="12"/>
+                                    <polyline points="12 5 19 12 12 19"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Suggestion & History Dropdown -->
+                    <div class="suggestion-dropdown" id="suggestionDropdown">
+                        <div class="suggestion-row" data-type="history">
+                            <span class="suggestion-label">File...</span>
+                            <span class="suggestion-path">C:\Users\prajal.patel\source\repos\CollabollamaLLMToAPI\home.html</span>
+                        </div>
+                        <div class="suggestion-row" data-type="history">
+                            <span class="suggestion-text">fdafsFAFSDFFAFDF FSFSFFSDF</span>
+                        </div>
+                        <div class="suggestion-row" data-type="history">
+                            <span class="suggestion-code">SELECT * FROM collab.conversation;Top 5 desc</span>
+                        </div>
+                        <div class="suggestion-row" data-type="template">
+                            <span class="suggestion-text">Suggest a few subjects for the following email: <a href="#" class="suggestion-link" onclick="event.preventDefault()">[paste email body here]</a></span>
+                        </div>
+                        <div class="suggestion-row" data-type="template">
+                            <span class="suggestion-text">Translate the following text into <a href="#" class="suggestion-link" onclick="event.preventDefault()">[English (United States)]</a>:</span>
+                        </div>
+                        <div class="suggestion-row suggestion-hint">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                            <span>Add content by selecting the plus icon or type /</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Action Pills -->
+                <!-- <div class="quick-actions">
+                    <button class="pill-btn" type="button">Refine Writing</button>
+                    <button class="pill-btn" type="button">Draft Content</button>
+                    <button class="pill-btn" type="button">Summarize</button>
+                    <button class="pill-btn" type="button">Find Content</button>
+                    <button class="pill-btn pill-more" type="button">···</button>
+                </div> -->
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

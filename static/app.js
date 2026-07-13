@@ -1,10 +1,188 @@
-        // Mirror of Python Priority enum
-        const Priority = Object.freeze({
-            ACTIVE: 1,
-            COMPLETED: 2,
-            ERROR: 3
-        });
+const Priority = Object.freeze({
+    ACTIVE: 1,
+    COMPLETED: 2,
+    ERROR: 3
+});
 
+// ============================================
+// Logging Utility (shared across all pages)
+// ============================================
+const LogLevel = Object.freeze({
+    DEBUG: 'DEBUG',
+    INFO: 'INFO',
+    WARN: 'WARN',
+    ERROR: 'ERROR'
+});
+
+function log(level, message, data = null) {
+    const timestamp = new Date().toISOString();
+    const prefix = `[${timestamp}] [${level}]`;
+    if (data !== null) {
+        console.log(prefix, message, data);
+    } else {
+        console.log(prefix, message);
+    }
+}
+
+function logDebug(message, data) { log(LogLevel.DEBUG, message, data); }
+function logInfo(message, data) { log(LogLevel.INFO, message, data); }
+function logWarn(message, data) { log(LogLevel.WARN, message, data); }
+function logError(message, data) { log(LogLevel.ERROR, message, data); }
+
+// Initialize logging based on current page
+function initPageLogging(pageName) {
+    logInfo(`${pageName} page initialized`);
+}
+
+// ============================================
+// Toast Notification Utility (shared)
+// ============================================
+function initToast() {
+    const statusToast = document.getElementById('statusToast');
+    const toastMessage = document.getElementById('toastMessage');
+    const toastIconSuccess = document.getElementById('toastIconSuccess');
+    const toastIconError = document.getElementById('toastIconError');
+
+    if (!statusToast) return null;
+
+    return {
+        show(message, isSuccess = true) {
+            logInfo(`Showing toast: ${isSuccess ? 'success' : 'error'} - ${message}`);
+            toastMessage.textContent = message;
+            if (isSuccess) {
+                statusToast.classList.remove('error');
+                toastIconSuccess.style.display = 'block';
+                toastIconError.style.display = 'none';
+            } else {
+                statusToast.classList.add('error');
+                toastIconSuccess.style.display = 'none';
+                toastIconError.style.display = 'block';
+            }
+            statusToast.classList.add('show');
+            setTimeout(() => {
+                statusToast.classList.remove('show');
+            }, 3000);
+        }
+    };
+}
+
+// ============================================
+// Password Visibility Toggle (shared)
+// ============================================
+function initPasswordToggle(toggleId, inputId) {
+    const togglePasswordBtn = document.getElementById(toggleId);
+    const passwordInput = document.getElementById(inputId);
+    const eyeOnIcon = togglePasswordBtn?.querySelector('.eye-on');
+    const eyeOffIcon = togglePasswordBtn?.querySelector('.eye-off');
+
+    if (!togglePasswordBtn || !passwordInput) return;
+
+    togglePasswordBtn.addEventListener('click', () => {
+        const isPassword = passwordInput.getAttribute('type') === 'password';
+        passwordInput.setAttribute('type', isPassword ? 'text' : 'password');
+
+        if (isPassword) {
+            eyeOnIcon.style.display = 'none';
+            eyeOffIcon.style.display = 'block';
+            togglePasswordBtn.classList.add('active');
+            logDebug('Password visibility toggled ON');
+        } else {
+            eyeOnIcon.style.display = 'block';
+            eyeOffIcon.style.display = 'none';
+            togglePasswordBtn.classList.remove('active');
+            logDebug('Password visibility toggled OFF');
+        }
+    });
+}
+
+// ============================================
+// Social Button Handlers (shared)
+// ============================================
+function initSocialButtons(prefix = '') {
+    document.querySelectorAll('.social-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const platform = btn.getAttribute('aria-label').replace(prefix, '');
+            logInfo(`Social ${prefix.toLowerCase()} attempted: ${platform}`);
+            alert(`Connecting with ${platform}...`);
+        });
+    });
+}
+
+// ============================================
+// Form Submission Handler (shared)
+// ============================================
+function initAuthForm(formId, submitBtnId, apiEndpoint, redirectUrl, prefix = '') {
+    const form = document.getElementById(formId);
+    const submitBtn = document.getElementById(submitBtnId);
+    const toast = initToast();
+
+    if (!form || !submitBtn || !toast) return;
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+        
+        logInfo(`${prefix} attempt`, data);
+
+        submitBtn.textContent = 'Please wait...';
+        submitBtn.disabled = true;
+
+        try {
+            const response = await fetch(apiEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            logDebug(`${prefix} response`, { status: response.status, data: result });
+
+            if (response.ok && result.status === 'success') {
+                logInfo(`${prefix} successful`, { userId: result.userId });
+                toast.show(`${prefix === 'Signup' ? 'Registration successful! Redirecting to login...' : 'Login successful! Redirecting...'}`, true);
+                setTimeout(() => {
+                    window.location.href = redirectUrl;
+                }, 1500);
+            } else {
+                logWarn(`${prefix} failed`, { message: result.message });
+                toast.show(result.message || (prefix === 'Signup' ? 'Registration failed. Email might already exist.' : 'Invalid email or password.'), false);
+                submitBtn.textContent = prefix === 'Signup' ? 'Sign up' : 'Sign in';
+                submitBtn.disabled = false;
+            }
+        } catch (err) {
+            logError(`${prefix} request failed`, err);
+            toast.show('Unable to connect to the server. Please try again.', false);
+            submitBtn.textContent = prefix === 'Signup' ? 'Sign up' : 'Sign in';
+            submitBtn.disabled = false;
+        }
+    });
+}
+
+// Initialize page-specific functionality
+document.addEventListener('DOMContentLoaded', () => {
+    // Check which page we're on and initialize accordingly
+    const isLoginPage = document.getElementById('loginForm');
+    const isSignupPage = document.getElementById('signupForm');
+    const isHomePage = document.getElementById('chatForm');
+
+    if (isLoginPage) {
+        initPageLogging('Login');
+        initPasswordToggle('togglePassword', 'password');
+        initToast();
+        initSocialButtons('Sign in with ');
+        initAuthForm('loginForm', 'loginSubmitBtn', '/api/login', '/home', 'Login');
+    } else if (isSignupPage) {
+        initPageLogging('Signup');
+        initPasswordToggle('togglePassword', 'password');
+        initToast();
+        initSocialButtons('Sign up with ');
+        initAuthForm('signupForm', 'signupSubmitBtn', '/api/signup', '/login', 'Signup');
+    } else if (isHomePage) {
+        initPageLogging('Home');
+        
+        // Home page specific code
         const chatForm = document.getElementById('chatForm');
         const userInput = document.getElementById('userInput');
         const chatBody = document.getElementById('chatBody');
@@ -12,7 +190,15 @@
         const historyList = document.getElementById('historyList');
         const loadMoreBtn = document.getElementById('loadMoreBtn');
         const newChatBtn = document.getElementById('newChatBtn');
-        const tempChatBtn = document.getElementById('tempChatBtn');
+        const suggestionDropdown = document.getElementById('suggestionDropdown');
+        const incognitoIcon = document.getElementById('incognitoIcon');
+        const tempChatPill = document.getElementById('tempChatPill');
+        const hamburgerBtn = document.getElementById('hamburgerBtn');
+        const drawerOverlay = document.getElementById('drawerOverlay');
+        const sidebar = document.getElementById('sidebar');
+        const splitDropdownBtn = document.getElementById('splitDropdownBtn');
+        const splitDropdownMenu = document.getElementById('splitDropdownMenu');
+        const tempChatToggle = document.getElementById('tempChatToggle');
 
         let currentAbortController = null;
         let currentInterval = null;
@@ -21,7 +207,7 @@
         let currentHistoryPage = 1;
         const historyLimit = 10;
         let totalHistoryRecords = 0;
-        let currentPromptId = null; // Persists idPrompt so /add-prompt is skipped on re-submit
+        let currentPromptId = null;
 
         function formatTime() {
             const now = new Date();
@@ -30,59 +216,162 @@
 
         function escapeHTML(str) {
             if (!str) return '';
-            return str.replace(/[&<>'"]/g, 
-                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            return str.replace(/[&<>'"]/g,
+                tag => ({ '&': '&', '<': '<', '>': '>', "'": '&#39;', '"': '&quot;' }[tag] || tag)
             );
         }
 
         function showWelcomeScreen(isTemp = false) {
             chatBody.innerHTML = '';
-            
+
             const welcome = document.createElement('div');
-            welcome.className = 'welcome-container';
+            welcome.className = 'welcome-screen';
             welcome.id = 'welcomeScreen';
-            
+
             if (isTemp) {
                 welcome.innerHTML = `
-                    <div class="welcome-icon">🔒</div>
-                    <h2 class="welcome-title">Temporary Chat Mode</h2>
-                    <p class="welcome-desc">Prompts entered in this mode will be processed normally but <strong>will not be saved to your sidebar history list</strong> on the frontend.</p>
+                    <h1 class="welcome-heading">Temporary chat</h1>
+                    <p class="welcome-subtext">This chat won't be saved or create memories. It follows your organization's retention policy, and may still be accessible to your admin.</p>
                 `;
             } else {
                 welcome.innerHTML = `
-                    <div class="welcome-icon">🦙</div>
-                    <h2 class="welcome-title">Welcome to CollabOllama</h2>
-                    <p class="welcome-desc">Enter your prompt below. The system will dispatch it to the scheduler queue, register it via <strong>add-prompt</strong>, and continuously monitor status responses.</p>
+                    <h1 class="welcome-heading">What can I help you with?</h1>
                 `;
             }
             chatBody.appendChild(welcome);
+
+            if (incognitoIcon) incognitoIcon.style.display = isTemp ? 'flex' : 'none';
+            if (tempChatPill) tempChatPill.style.display = isTemp ? 'inline-flex' : 'none';
         }
 
         function resetChatSession(isTemp = false) {
-            // Cancel active polling/requests
             if (currentAbortController) currentAbortController.abort();
             if (currentInterval) clearInterval(currentInterval);
 
-            // Deselect selected cards in sidebar
-            document.querySelectorAll('.history-item').forEach(c => c.style.borderColor = 'var(--border-color)');
+            document.querySelectorAll('.chat-item').forEach(c => c.classList.remove('active'));
 
-            // Reset flags
             isTemporaryChat = isTemp;
-            currentPromptId = null; // Clear stored prompt ID for the new session
-            if (isTemp) {
-                tempChatBtn.classList.add('active');
-            } else {
-                tempChatBtn.classList.remove('active');
-            }
+            currentPromptId = null;
 
-            // Show appropriate welcome screen
             showWelcomeScreen(isTemp);
+            updateTempToggleState();
         }
 
-        newChatBtn.addEventListener('click', () => resetChatSession(false));
-        tempChatBtn.addEventListener('click', () => resetChatSession(true));
+        if (newChatBtn) {
+            newChatBtn.addEventListener('click', () => resetChatSession(false));
+        }
 
-        // Close any open kebab menus when clicking elsewhere on the page
+        document.querySelectorAll('.split-btn-primary').forEach(btn => {
+            btn.addEventListener('click', () => resetChatSession(false));
+        });
+
+        function openDrawer() {
+            if (sidebar) sidebar.classList.add('open');
+            if (drawerOverlay) drawerOverlay.classList.add('open');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeDrawer() {
+            if (sidebar) sidebar.classList.remove('open');
+            if (drawerOverlay) drawerOverlay.classList.remove('open');
+            document.body.style.overflow = '';
+        }
+
+        if (hamburgerBtn) {
+            hamburgerBtn.addEventListener('click', openDrawer);
+        }
+
+        if (drawerOverlay) {
+            drawerOverlay.addEventListener('click', closeDrawer);
+        }
+
+        document.querySelectorAll('.nav-item, .chat-item').forEach(item => {
+            item.addEventListener('click', () => {
+                if (window.innerWidth <= 768) {
+                    closeDrawer();
+                }
+            });
+        });
+
+        function openSplitDropdown() {
+            if (splitDropdownMenu) splitDropdownMenu.classList.add('open');
+            updateTempToggleState();
+        }
+
+        function closeSplitDropdown() {
+            if (splitDropdownMenu) splitDropdownMenu.classList.remove('open');
+        }
+
+        function updateTempToggleState() {
+            if (tempChatToggle) {
+                tempChatToggle.classList.toggle('active', isTemporaryChat);
+            }
+        }
+
+        if (splitDropdownBtn) {
+            splitDropdownBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (splitDropdownMenu.classList.contains('open')) {
+                    closeSplitDropdown();
+                } else {
+                    openSplitDropdown();
+                }
+            });
+        }
+
+        if (tempChatToggle) {
+            tempChatToggle.addEventListener('click', () => {
+                closeSplitDropdown();
+                resetChatSession(!isTemporaryChat);
+            });
+        }
+
+        document.addEventListener('click', (e) => {
+            if (splitDropdownMenu && !splitDropdownMenu.contains(e.target) && !splitDropdownBtn.contains(e.target)) {
+                closeSplitDropdown();
+            }
+        });
+
+        function openDropdown() {
+            if (suggestionDropdown) suggestionDropdown.classList.add('open');
+        }
+
+        function closeDropdown() {
+            if (suggestionDropdown) suggestionDropdown.classList.remove('open');
+        }
+
+        if (userInput) {
+            userInput.addEventListener('focus', () => {
+                if (userInput.value.trim().length > 0) {
+                    openDropdown();
+                }
+            });
+
+            userInput.addEventListener('input', () => {
+                if (userInput.value.trim().length > 0) {
+                    openDropdown();
+                } else {
+                    closeDropdown();
+                }
+            });
+
+            userInput.addEventListener('blur', () => {
+                setTimeout(closeDropdown, 150);
+            });
+        }
+
+        document.querySelectorAll('.suggestion-row').forEach(row => {
+            row.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                const text = row.querySelector('.suggestion-text, .suggestion-code, .suggestion-label');
+                if (text && userInput) {
+                    userInput.value = text.textContent;
+                    userInput.focus();
+                }
+                closeDropdown();
+            });
+        });
+
         document.addEventListener('click', (e) => {
             const portal = document.getElementById('kebab-portal');
             if (portal && !portal.contains(e.target)) {
@@ -132,7 +421,6 @@
 
             container.appendChild(bubble);
 
-            // Add Edit button for user messages
             if (isUser && !isLoader) {
                 const editBtn = document.createElement('button');
                 editBtn.className = 'edit-btn';
@@ -155,7 +443,6 @@
             return { bubble, stopBtn };
         }
 
-        // --- Kebab portal: single shared floating menu appended to <body> ---
         function getKebabPortal() {
             let menu = document.getElementById('kebab-portal');
             if (!menu) {
@@ -178,53 +465,34 @@
             return menu;
         }
 
-        // Add history item card to sidebar list
         function addHistoryItemToSidebar(item, prepend = true) {
-            const card = document.createElement('div');
-            card.className = 'history-item';
+            const card = document.createElement('button');
+            card.className = 'chat-item';
             card.dataset.idPrompt = item.idPrompt;
-            
-            let dateStr = '';
-            if (item.promptdate) {
-                try {
-                    const d = new Date(item.promptdate);
-                    dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                } catch(e) {
-                    dateStr = item.promptdate;
-                }
-            }
 
             card.innerHTML = `
-                <div class="history-item-body">
-                    <div class="history-item-prompt">${escapeHTML(item.prompts)}</div>
-                    <div class="history-item-meta"></div>
-                </div>
-                <div class="history-item-actions">
-                    <button class="kebab-btn" type="button" title="More options" aria-label="More options">
-                        <span></span><span></span><span></span>
-                    </button>
+                <span class="chat-item-text">${escapeHTML(item.prompts)}</span>
+                <div class="chat-item-kebab">
+                    <span></span><span></span><span></span>
                 </div>
             `;
 
-            // --- Kebab menu wiring (portal approach) ---
-            const kebabBtn = card.querySelector('.kebab-btn');
+            const kebabBtn = card.querySelector('.chat-item-kebab');
 
             kebabBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const menu = getKebabPortal();
 
-                // If already open for this button, close it
                 if (menu.dataset.activeCard === card.dataset.idPrompt && menu.classList.contains('open')) {
                     menu.classList.remove('open');
                     return;
                 }
 
-                // Bind rename/delete to this card's context
                 menu.querySelector('.rename-btn').onclick = async (ev) => {
                     ev.stopPropagation();
                     menu.classList.remove('open');
 
-                    const promptEl = card.querySelector('.history-item-prompt');
+                    const promptEl = card.querySelector('.chat-item-text');
                     const currentText = promptEl.textContent;
                     const newName = prompt('Rename conversation:', currentText);
 
@@ -241,10 +509,7 @@
                                     prompts: newName.trim()
                                 })
                             });
-
-                            if (!res.ok) {
-                                throw new Error(`Server error: ${res.status}`);
-                            }
+                            if (!res.ok) throw new Error(`Server error: ${res.status}`);
                         } catch (err) {
                             alert(`Failed to update conversation: ${err.message}`);
                         }
@@ -269,39 +534,29 @@
                     }
                 };
 
-                // Position the portal next to the kebab button
                 const rect = kebabBtn.getBoundingClientRect();
-                menu.style.top  = `${rect.bottom + window.scrollY + 4}px`;
-                menu.style.left = `${rect.right  + window.scrollX + 4}px`;
+                menu.style.top = `${rect.bottom + window.scrollY + 4}px`;
+                menu.style.left = `${rect.left + window.scrollX}px`;
                 menu.dataset.activeCard = card.dataset.idPrompt;
                 menu.classList.add('open');
             });
 
             card.addEventListener('click', async () => {
-
-                // Remove active classes from Temp Chat mode when viewing persistent history
                 isTemporaryChat = false;
-                tempChatBtn.classList.remove('active');
 
-                // Deselect other cards, highlight selected
-                document.querySelectorAll('.history-item').forEach(c => c.style.borderColor = 'var(--border-color)');
-                card.style.borderColor = 'var(--accent-purple)';
+                document.querySelectorAll('.chat-item').forEach(c => c.classList.remove('active'));
+                card.classList.add('active');
 
-                // Cancel any active polling/request
                 if (currentAbortController) currentAbortController.abort();
                 if (currentInterval) clearInterval(currentInterval);
 
-                // Set idPrompt context so re-submissions append to this session
                 currentPromptId = item.idPrompt;
-
-                // Clear main chat area
                 chatBody.innerHTML = '';
 
                 currentAbortController = new AbortController();
                 const { signal } = currentAbortController;
 
                 try {
-                    // Fetch ALL conversation rows for this idPrompt (conversationState=0 = all)
                     const res = await fetch(`/get-conversation-messages?idPrompt=${item.idPrompt}&conversationState=0`, { signal });
                     if (!res.ok) {
                         appendMessage('Error loading conversation history.', false);
@@ -310,7 +565,6 @@
                     const resData = await res.json();
 
                     if (resData.status !== 'success' || !Array.isArray(resData.data) || resData.data.length === 0) {
-                        // No conversation records yet — show the prompt and a pending loader
                         appendMessage(item.prompts, true);
                         const { bubble: botBubble, stopBtn } = appendMessage('', false, true);
                         if (stopBtn) {
@@ -329,8 +583,6 @@
                     }
 
                     const rows = resData.data;
-
-                    // Render each conversation exchange as chat bubbles
                     let lastBotBubble = null;
                     let lastRowPending = false;
 
@@ -338,19 +590,16 @@
                         const row = rows[i];
                         const userText = row.conversation || '';
                         const botText = row.conversationResponce || '';
-                        const state = row.conversationState; // 1=active/pending, 2=completed
+                        const state = row.conversationState;
 
-                        // User bubble
                         if (userText.trim()) {
                             appendMessage(userText, true);
                         }
 
                         if (state === Priority.COMPLETED && botText.trim()) {
-                            // Completed — render the bot reply inline (no loader)
                             appendMessage(botText, false);
                             lastRowPending = false;
                         } else {
-                            // Still pending — show loader for this message
                             const { bubble: botBubble, stopBtn } = appendMessage('', false, true);
                             lastBotBubble = botBubble;
                             lastRowPending = true;
@@ -366,20 +615,20 @@
                                     botBubble.appendChild(meta);
                                 });
                             }
+                            pollConversationStatus(item.idPrompt, botBubble, signal);
                         }
                     }
 
-                    // If last row is still pending, start polling for its response
                     if (lastRowPending && lastBotBubble) {
                         pollConversationStatus(item.idPrompt, lastBotBubble, signal);
                     }
 
                 } catch (err) {
                     if (err.name === 'AbortError') return;
-                    appendMessage(`Error: ${err.message}`, false);
+                    appendMessage('Error loading conversation.', false);
                 }
             });
-            
+
             if (prepend) {
                 historyList.prepend(card);
             } else {
@@ -387,7 +636,29 @@
             }
         }
 
-        // Fetch paginated history from API
+        function pollConversationStatus(promptId, botBubble, signal) {
+            currentInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(`/get-conversation-status?idPrompt=${promptId}`, { signal });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    if (data.status === 'success' && data.conversationState === Priority.COMPLETED) {
+                        clearInterval(currentInterval);
+                        const responseText = data.conversationResponce || '';
+                        botBubble.innerText = responseText;
+                        const meta = document.createElement('span');
+                        meta.className = 'msg-meta';
+                        meta.innerText = formatTime();
+                        botBubble.appendChild(meta);
+                    }
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        clearInterval(currentInterval);
+                    }
+                }
+            }, 1500);
+        }
+
         async function loadHistory(page = 1) {
             try {
                 const response = await fetch(`/chat-history?page=${page}&limit=${historyLimit}&promptType=1`);
@@ -396,17 +667,13 @@
                 if (res.status === 'success' && res.data) {
                     totalHistoryRecords = res.total;
                     res.data.forEach(item => {
-                        if (!document.querySelector(`.history-item[data-prompt-id="${item.idPrompt}"]`)) {
+                        if (!document.querySelector(`.chat-item[data-id-prompt="${item.idPrompt}"]`)) {
                             addHistoryItemToSidebar(item, false);
                         }
                     });
-                    
-                    const loadedCount = document.querySelectorAll('.history-item').length;
-                    if (loadedCount >= totalHistoryRecords) {
-                        loadMoreBtn.style.display = 'none';
-                    } else {
-                        loadMoreBtn.style.display = 'block';
-                    }
+
+                    const loadedCount = document.querySelectorAll('.chat-item').length;
+                    loadMoreBtn.style.display = loadedCount >= totalHistoryRecords ? 'none' : 'block';
                 }
             } catch (err) {
                 console.error('Failed to load chat history:', err);
@@ -418,7 +685,6 @@
             loadHistory(currentHistoryPage);
         });
 
-        // Initialize Chat History on load
         loadHistory(1);
 
         chatForm.addEventListener('submit', async (e) => {
@@ -428,32 +694,20 @@
 
             userInput.value = '';
 
-            // Cancel any active request
-            if (currentAbortController) {
-                currentAbortController.abort();
-            }
-            if (currentInterval) {
-                clearInterval(currentInterval);
-            }
+            if (currentAbortController) currentAbortController.abort();
+            if (currentInterval) clearInterval(currentInterval);
 
             appendMessage(promptText, true);
 
-            // Create a new AbortController
             currentAbortController = new AbortController();
             const { signal } = currentAbortController;
 
-            // Create loading response bubble for bot
             const { bubble: botBubble, stopBtn } = appendMessage('', false, true);
 
-            // Attach Stop click handler
             if (stopBtn) {
                 stopBtn.addEventListener('click', () => {
-                    if (currentAbortController) {
-                        currentAbortController.abort();
-                    }
-                    if (currentInterval) {
-                        clearInterval(currentInterval);
-                    }
+                    if (currentAbortController) currentAbortController.abort();
+                    if (currentInterval) clearInterval(currentInterval);
                     botBubble.innerHTML = `<span class="error-message">Request stopped.</span>`;
                     const meta = document.createElement('span');
                     meta.className = 'msg-meta';
@@ -463,53 +717,40 @@
             }
 
             try {
-                // 1. Call add-prompt only if no prompt ID is stored for this session
                 if (!currentPromptId) {
                     const response = await fetch('/add-prompt', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ prompts: promptText, promptType: isTemporaryChat ? 2 : 1 }),
                         signal: signal
                     });
 
-                    if (!response.ok) {
-                        throw new Error('Failed to register prompt');
-                    }
+                    if (!response.ok) throw new Error('Failed to register prompt');
                     const result = await response.json();
-                    currentPromptId = result.idPrompt; // Store for reuse
+                    currentPromptId = result.idPrompt;
 
                     if (!isTemporaryChat) {
-                    const newItem = {
-                        idPrompt: currentPromptId,
-                        prompts: promptText,
-                        promptType: 1,
-                        promptdate: new Date().toISOString(),
-                        prompsResponce: null
-                    };
+                        const newItem = {
+                            idPrompt: currentPromptId,
+                            prompts: promptText,
+                            promptType: 1,
+                            promptdate: new Date().toISOString(),
+                            prompsResponce: null
+                        };
                         addHistoryItemToSidebar(newItem, true);
                     }
-
                 }
 
                 const response2 = await fetch('/add-conversation-message', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ conversation: promptText, idPrompt: currentPromptId }),
                     signal: signal
                 });
 
-                if (!response2.ok) {
-                    throw new Error('Failed to register conversation message');
-                }
+                if (!response2.ok) throw new Error('Failed to register conversation message');
 
-                // Prepend new prompt item to sidebar history list if NOT in temporary mode
-
-                // 2. Poll conversation status until response is ready
-                pollConversationStatus(currentPromptId, botBubble, signal);
+                pollConversationStatusNew(currentPromptId, botBubble, signal);
 
             } catch (err) {
                 if (err.name === 'AbortError') return;
@@ -522,79 +763,29 @@
             }
         });
 
-        async function pollPromptStatus(idPrompt, botBubble, signal) {
-            const maxAttempts = 90; // 2+ minutes max
+        async function pollConversationStatusNew(idPrompt, botBubble, signal) {
+            const maxAttempts = 90;
             let attempts = 0;
 
-            currentInterval = setInterval(async () => {
-                attempts++;
-                if (attempts > maxAttempts) {
-                    clearInterval(currentInterval);
-                    botBubble.innerHTML = `<span class="error-message">Error: Request timed out.</span>`;
+            try {
+                const checkRes = await fetch('/chat-process');
+                if (!checkRes.ok) {
+                    botBubble.innerHTML = `<span class="error-message">Process server not responding.</span>`;
                     const meta = document.createElement('span');
                     meta.className = 'msg-meta';
                     meta.innerText = formatTime();
                     botBubble.appendChild(meta);
                     return;
                 }
+            } catch (err) {
+                botBubble.innerHTML = `<span class="error-message">Cannot reach process server.</span>`;
+                const meta = document.createElement('span');
+                meta.className = 'msg-meta';
+                meta.innerText = formatTime();
+                botBubble.appendChild(meta);
+                return;
+            }
 
-                try {
-                    const response = await fetch(`/get-prompt-status?idPrompt=${idPrompt}`, { signal });
-                    if (!response.ok) {
-                        if (response.status === 404) {
-                            clearInterval(currentInterval);
-                            throw new Error('Prompt status record not found.');
-                        }
-                        return;
-                    }
-
-                    
-                    const data = await response.json();
-
-                    if (data.status === 'success' && data.data && data.data.length > 0) {
-
-                        // Get the last conversation record
-                        const latestConversation = data.data[data.data.length - 1];
-
-                        const state = latestConversation.conversationState;
-                        const reply = latestConversation.conversationResponce;
-
-                        // promptType 2 indicates completed
-                        if (state === 2 || (reply && reply.trim() !== '')) {
-                            clearInterval(currentInterval);
-
-                            botBubble.innerHTML = '';
-                            botBubble.innerText = reply;
-
-                            const meta = document.createElement('span');
-                            meta.className = 'msg-meta';
-                            meta.innerText = formatTime();
-                            botBubble.appendChild(meta);
-                        }
-                    }
-
-                } catch (err) {
-                    if (err.name === 'AbortError') return;
-                    clearInterval(currentInterval);
-                    botBubble.innerHTML = `<span class="error-message">Error: ${err.message}</span>`;
-                    const meta = document.createElement('span');
-                    meta.className = 'msg-meta';
-                    meta.innerText = formatTime();
-                    botBubble.appendChild(meta);
-                }
-            }, 1500);
-        }
-        async function pollConversationStatus(idPrompt, botBubble, signal) {
-            const maxAttempts = 90; // 2+ minutes max
-            let attempts = 0;
-            const response = await fetch(`/chat-process`);
-                    if (!response.ok) {
-                        if (response.status === 404) {
-                            clearInterval(currentInterval);
-                            throw new Error('Process server not working.');
-                        }
-                        return;
-                    }
             currentInterval = setInterval(async () => {
                 attempts++;
                 if (attempts > maxAttempts) {
@@ -620,17 +811,12 @@
                     const data = await response.json();
 
                     if (data.status === 'success' && data.data && data.data.length > 0) {
-
-                        // Get the last conversation record
                         const latestConversation = data.data[data.data.length - 1];
-
                         const state = latestConversation.conversationState;
                         const reply = latestConversation.conversationResponce;
 
-                        // promptType 2 indicates completed
                         if (state === 2 || (reply && reply.trim() !== '')) {
                             clearInterval(currentInterval);
-
                             botBubble.innerHTML = '';
                             botBubble.innerText = reply;
 
@@ -651,3 +837,5 @@
                 }
             }, 1500);
         }
+    }
+});
